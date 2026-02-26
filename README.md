@@ -8,6 +8,7 @@ Fuzzer project for 50.053 Software Testing and Verification
 2. Install dependencies
     ```
     uv sync
+    uv run pre-commit install
     ```
 
 3. Run

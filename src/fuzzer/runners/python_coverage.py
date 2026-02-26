@@ -14,7 +14,16 @@ class PythonCoverageRunner:
     def run(self):
         # Run the script with coverage.py
         result = subprocess.run(
-            ["uv", "run", "python", "-m", "coverage", "run", self.script_path, *self.script_args],
+            [
+                "uv",
+                "run",
+                "python",
+                "-m",
+                "coverage",
+                "run",
+                self.script_path,
+                *self.script_args,
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
