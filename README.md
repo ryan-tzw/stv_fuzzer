@@ -15,3 +15,8 @@ Fuzzer project for 50.053 Software Testing and Verification
     ```
     uv run python -m fuzzer
     ```
+
+# Making commits
+
+Note: Because the pre-commit is configured with Ruff, if Ruff makes any changes to your code, it will show an error.
+This is not a problem, just stage the changes and commit again.
