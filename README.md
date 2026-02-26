@@ -18,5 +18,6 @@ Fuzzer project for 50.053 Software Testing and Verification
 
 # Making commits
 
-Note: Because the pre-commit is configured with Ruff, if Ruff makes any changes to your code, it will show an error.
+- Note: Because the pre-commit is configured with Ruff, if Ruff makes any changes to your code, it will show an error.
 This is not a problem, just stage the changes and commit again.
+- `main` branch is protected so push to a separate branch and make a PR to merge.
