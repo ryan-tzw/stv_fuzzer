@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
+# TODO: put this logic in the runner. Runner should set up env, harness just runs target and prints results
 def _add_target_to_syspath() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     target_dir = repo_root / "targets" / "json-decoder"
@@ -28,6 +29,7 @@ def main() -> int:
     """
     _add_target_to_syspath()
 
+    # TODO: probably will want to move all corpus related stuff into a CorpusManager class later
     default_json = Path(__file__).parent / "corpus" / "default.json"
 
     parser = argparse.ArgumentParser(description="JSON decoder harness")
