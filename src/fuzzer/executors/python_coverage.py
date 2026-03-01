@@ -23,9 +23,10 @@ class PythonCoverageExecutor:
             for a in (script_args or [])
         ]
 
-    def run(self) -> tuple[str, str, Path]:
+    def run(self, input_data: str | None = None) -> tuple[str, str, Path]:
         """
         Run the harness under coverage.py in the target's uv environment.
+        If input_data is provided, it is passed to the harness via stdin.
         Returns (stdout, stderr, coverage_file_path).
         """
         fd, coverage_path = tempfile.mkstemp(suffix=".coverage")
@@ -59,6 +60,7 @@ class PythonCoverageExecutor:
             text=True,
             cwd=str(self.project_dir),
             env=env,
+            input=input_data,
         )
 
         return result.stdout, result.stderr, coverage_file
