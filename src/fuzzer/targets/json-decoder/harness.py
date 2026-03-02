@@ -1,8 +1,6 @@
-import argparse
 import json
 import sys
 import traceback
-from pathlib import Path
 from typing import Any
 
 
@@ -17,27 +15,14 @@ def _stable_print(obj: Any) -> None:
 def main() -> int:
     """
     JSON decoder harness for fuzzing.
-    Either reads from stdin, or accepts a JSON filepath argument
-    Uses default.json from the corpus if no input is provided.
+    Reads JSON input from stdin (required).
     """
-    default_json = Path(__file__).parent / "corpus" / "default.json"
-
-    parser = argparse.ArgumentParser(description="JSON decoder harness")
-    parser.add_argument(
-        "file",
-        nargs="?",
-        type=Path,
-        default=None,
-        help="JSON file to decode (reads from stdin if omitted, falls back to default.json)",
-    )
-    args = parser.parse_args()
-
-    if args.file:
-        raw = args.file.read_bytes()
-    elif not sys.stdin.isatty():
-        raw = sys.stdin.buffer.read()
-    else:
-        raw = default_json.read_bytes()
+    raw = sys.stdin.buffer.read()
+    if not raw:
+        sys.stderr.write(
+            "Error: No input provided. JSON input is required via stdin.\n"
+        )
+        return 1
 
     s = raw.decode("utf-8", errors="replace")
 
