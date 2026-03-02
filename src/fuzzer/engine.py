@@ -10,19 +10,20 @@ from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors.python_coverage import PythonCoverageExecutor
 from fuzzer.observers.python_coverage import CoverageData, PythonCoverageObserver
+from fuzzer.storage.database import FuzzerDatabase
 
 
 class FuzzingEngine:
     def __init__(self, config: FuzzerConfig):
         self.config = config
 
-        # Set up run output directories
+        # Set up run output directory and database
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.run_dir = config.runs_dir / run_id
-        self.crashes_dir = self.run_dir / "crashes"
-        self.interesting_dir = self.run_dir / "corpus"
+        self.run_dir.mkdir(parents=True, exist_ok=True)
 
-        self.corpus = CorpusManager(config.corpus_dir, self.interesting_dir)
+        self.db = FuzzerDatabase(self.run_dir / "results.db")
+        self.corpus = CorpusManager(config.corpus_dir, self.db)
         self.mutator = Mutator()
         self.scheduler = self._build_scheduler()
         self.executor = PythonCoverageExecutor(config.project_dir, config.harness_path)
@@ -62,13 +63,6 @@ class FuzzingEngine:
             for branch in branches:
                 self._seen_branches.add((file, branch))
 
-    def _save_crash(self, data: str) -> None:
-        self.crashes_dir.mkdir(parents=True, exist_ok=True)
-        from uuid import uuid4
-
-        path = self.crashes_dir / f"{uuid4().hex}.txt"
-        path.write_text(data, encoding="utf-8")
-
     def run(self) -> None:
         self.corpus.load()
         print(
@@ -77,6 +71,7 @@ class FuzzingEngine:
         print(f"Run output: {self.run_dir}")
 
         iteration = 0
+        unique_crashes = 0
         start_time = time.monotonic()
 
         try:
@@ -105,11 +100,18 @@ class FuzzingEngine:
                     stdout, stderr, coverage_file = self.executor.run(mutated)
                     self.corpus.record_fuzzed(seed)
 
-                    # Detect crash (harness exits non-zero on exception)
-                    crashed = "ERR:" in stderr
-                    if crashed:
-                        print(f"[iter {iteration}] Crash found!")
-                        self._save_crash(mutated)
+                    # Detect crash (harness writes ERR: to stderr on exception)
+                    if "ERR:" in stderr:
+                        is_new = self.db.record_crash(mutated, stderr)
+                        if is_new:
+                            unique_crashes += 1
+                            print(
+                                f"[iter {iteration}] New unique crash! Total unique: {unique_crashes}"
+                            )
+                        else:
+                            print(
+                                f"[iter {iteration}] Duplicate crash (not recorded again)."
+                            )
 
                     coverage = self.observer.observe(coverage_file)
 
@@ -125,8 +127,13 @@ class FuzzingEngine:
         except KeyboardInterrupt:
             print("\nFuzzing interrupted.")
 
+        finally:
+            self.db.flush_corpus(self.corpus.seeds())
+            self.db.close()
+
         elapsed = time.monotonic() - start_time
         print(f"\nDone. {iteration} iterations in {elapsed:.1f}s.")
         print(
-            f"Corpus size: {len(self.corpus.seeds())} | Crashes dir: {self.crashes_dir}"
+            f"Corpus size: {len(self.corpus.seeds())} | Unique crashes: {unique_crashes}"
         )
+        print(f"Results: {self.run_dir / 'results.db'}")

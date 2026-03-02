@@ -1,10 +1,13 @@
 """
-Corpus manager: loads seed inputs, tracks metadata, and saves interesting inputs to disk.
+Corpus manager: loads seed inputs, tracks metadata, and persists via the database.
 """
 
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fuzzer.storage.database import FuzzerDatabase
 
 
 @dataclass
@@ -20,22 +23,30 @@ class SeedInput:
 
 
 class CorpusManager:
-    def __init__(self, corpus_dir: str | Path, save_dir: str | Path):
+    def __init__(self, corpus_dir: str | Path, db: FuzzerDatabase):
         """
-        corpus_dir: directory of initial seed files to load at startup.
-        save_dir:   directory where interesting inputs discovered during fuzzing are saved.
+        corpus_dir: directory of initial seed files to load at startup (only used on first run).
+        db:         database instance used to persist and reload seeds across runs.
         """
         self.corpus_dir = Path(corpus_dir).resolve()
-        self.save_dir = Path(save_dir).resolve()
+        self._db = db
         self._seeds: list[SeedInput] = []
 
     def load(self) -> None:
-        """Load all files from corpus_dir into memory as SeedInputs."""
-        self._seeds.clear()
-        for path in sorted(self.corpus_dir.iterdir()):
-            if path.is_file():
-                data = path.read_text(encoding="utf-8")
-                self._seeds.append(SeedInput(data=data))
+        """
+        Load seeds from the database if available, otherwise load from corpus_dir files
+        and persist them to the database.
+        """
+        self._seeds = self._db.load_seeds()
+
+        if not self._seeds:
+            # First run — load from seed files and persist to DB
+            for path in sorted(self.corpus_dir.iterdir()):
+                if path.is_file():
+                    data = path.read_text(encoding="utf-8")
+                    seed = SeedInput(data=data)
+                    self._db.save_seed(seed)
+                    self._seeds.append(seed)
 
         if not self._seeds:
             raise ValueError(
@@ -48,14 +59,11 @@ class CorpusManager:
 
     def add(self, data: str) -> SeedInput:
         """
-        Save an interesting input to disk and add it to the in-memory pool.
+        Add an interesting input to the in-memory pool and persist it to the database.
         Returns the newly created SeedInput.
         """
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{uuid.uuid4().hex}.json"
-        (self.save_dir / filename).write_text(data, encoding="utf-8")
-
         seed = SeedInput(data=data)
+        self._db.save_seed(seed)
         self._seeds.append(seed)
         return seed
 
