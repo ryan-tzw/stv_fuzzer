@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from fuzzer.config import FuzzerConfig
+from fuzzer.config import CORPUS_DIR, HARNESSES_DIR, FuzzerConfig
 from fuzzer.engine import FuzzingEngine
 
 
@@ -13,8 +13,14 @@ def main() -> int:
 
     # Required
     parser.add_argument("project_dir", type=Path, help="Path to target uv directory")
-    parser.add_argument("harness_path", type=Path, help="Path to the harness script")
-    parser.add_argument("corpus_dir", type=Path, help="Path to seed corpus directory")
+    parser.add_argument(
+        "harness",
+        help=f"Harness name (resolved from {HARNESSES_DIR})",
+    )
+    parser.add_argument(
+        "corpus",
+        help=f"Corpus type name (resolved from {CORPUS_DIR})",
+    )
 
     # Output
     parser.add_argument(
@@ -63,8 +69,8 @@ def main() -> int:
     # Start from config defaults, then apply any explicit CLI overrides
     config = FuzzerConfig(
         project_dir=args.project_dir,
-        harness_path=args.harness_path,
-        corpus_dir=args.corpus_dir,
+        harness=args.harness,
+        corpus=args.corpus,
     )
     if args.runs_dir is not None:
         config.runs_dir = args.runs_dir
