@@ -9,7 +9,7 @@ from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors.python_coverage import (
-    InProcessCoverageExecutor,
+    PersistentCoverageExecutor,
 )
 from fuzzer.feedback import CoverageFeedback
 from fuzzer.logger import FuzzerLogger
@@ -32,7 +32,7 @@ class FuzzingEngine:
         self.corpus = CorpusManager(config.corpus_dir, self.db)
         self.mutator = Mutator()
         self.scheduler = self._build_scheduler()
-        self.executor = InProcessCoverageExecutor(
+        self.executor = PersistentCoverageExecutor(
             config.project_dir, config.harness_path
         )
         self.observer = InProcessCoverageObserver(config.project_dir)

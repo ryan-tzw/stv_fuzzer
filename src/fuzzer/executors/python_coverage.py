@@ -1,15 +1,24 @@
 """
 Runs a harness script under coverage.py inside the target's uv environment.
 
-Two executor variants are provided:
+Three executor variants are provided:
 
-* PythonCoverageExecutor  – original implementation; writes a temp .coverage
-  file that the observer reads back from disk.
+* PythonCoverageExecutor
+    Original implementation; writes a temp .coverage file that the observer
+    reads back from disk.
 
-* InProcessCoverageExecutor – leaner variant; uses a runner shim that runs
-  coverage entirely in-memory (data_file=False) and returns coverage data as
-  JSON over stdout.  No temporary files are written, removing the I/O
-  bottleneck in the hot fuzzing loop.
+* InProcessCoverageExecutor
+    Removes the file I/O bottleneck: uses a runner shim that keeps coverage
+    in-memory and returns results as JSON over stdout.  Still spawns a fresh
+    subprocess per iteration, so ``uv`` / Python startup cost is paid each
+    time.
+
+* PersistentCoverageExecutor
+    Eliminates subprocess startup overhead by keeping a single long-lived
+    worker process alive for the lifetime of the executor (via
+    :class:`~fuzzer.executors.worker.WorkerProcess`).  The worker runs the
+    runner shim in ``--loop`` mode, so only the harness execution and
+    coverage measurement happen per iteration.
 """
 
 import argparse
@@ -163,6 +172,117 @@ class InProcessCoverageExecutor:
             payload.get("stderr", ""),
             payload.get("coverage", {}),
         )
+
+
+# --------------------------------------------------------------------------- #
+#  Persistent worker variant                                                  #
+# --------------------------------------------------------------------------- #
+
+
+class PersistentCoverageExecutor:
+    """
+    Run a harness under coverage.py using a **single long-lived worker**.
+
+    On the first call to :meth:`run` (or on :meth:`start`) a subprocess is
+    spawned running ``_inprocess_runner.py --loop``.  All subsequent calls
+    send a JSON request over stdin and read a JSON response over stdout,
+    paying only the cost of harness execution + coverage measurement rather
+    than full subprocess + ``uv`` startup on every iteration.
+
+    Crash recovery is delegated to :class:`~fuzzer.executors.worker.WorkerProcess`:
+    if the worker crashes it is automatically restarted (up to *max_restarts*
+    times) and the failed iteration returns an empty coverage dict so the
+    fuzzing loop can continue.
+
+    .. note::
+        Because the target package remains in ``sys.modules`` across iterations
+        inside the worker, module-level side effects (global state, caches, etc.)
+        persist between runs.  For stateless harnesses this has no impact.
+
+    Parameters
+    ----------
+    project_dir:
+        Root of the target ``uv`` project.
+    script_path:
+        Path to the harness script.
+    script_args:
+        Extra arguments forwarded to the harness.
+    max_restarts:
+        How many worker crashes to tolerate before raising
+        :class:`~fuzzer.executors.worker.WorkerCrashedError`.
+    """
+
+    def __init__(
+        self,
+        project_dir: str | Path,
+        script_path: str | Path,
+        script_args: list[str] | None = None,
+        max_restarts: int = 5,
+    ) -> None:
+        from fuzzer.executors.worker import WorkerProcess
+
+        self.project_dir = Path(project_dir).resolve()
+        self.script_path = Path(script_path).resolve()
+        self.script_args = [
+            str(Path(a).resolve()) if Path(a).exists() else a
+            for a in (script_args or [])
+        ]
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(self.project_dir)
+        env.pop("VIRTUAL_ENV", None)
+
+        cmd = [
+            "uv",
+            "run",
+            "--project",
+            str(self.project_dir),
+            "--with",
+            "coverage",
+            "python",
+            str(_RUNNER_SCRIPT),
+            "--loop",
+            str(self.script_path),
+            *self.script_args,
+        ]
+
+        self._worker = WorkerProcess(
+            cmd=cmd,
+            env=env,
+            cwd=str(self.project_dir),
+            max_restarts=max_restarts,
+        )
+
+    def start(self) -> None:
+        """Explicitly start the worker (also called lazily on first :meth:`run`)."""
+        self._worker.start()
+
+    def stop(self) -> None:
+        """Shut down the worker process."""
+        self._worker.stop()
+
+    def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
+        """
+        Send *input_data* to the persistent worker and return
+        ``(harness_stdout, harness_stderr, coverage_dict)``.
+        """
+        payload = self._worker.send({"input": input_data})
+
+        if "_worker_error" in payload:
+            return "", payload.get("_stderr", ""), {}
+
+        return (
+            payload.get("stdout", ""),
+            payload.get("stderr", ""),
+            payload.get("coverage", {}),
+        )
+
+    def __enter__(self) -> "PersistentCoverageExecutor":
+        self.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.stop()
 
 
 if __name__ == "__main__":
