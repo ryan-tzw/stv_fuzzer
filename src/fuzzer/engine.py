@@ -8,10 +8,14 @@ from datetime import datetime
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
-from fuzzer.executors.python_coverage import PythonCoverageExecutor
+from fuzzer.executors.python_coverage import (
+    InProcessCoverageExecutor,
+)
 from fuzzer.feedback import CoverageFeedback
 from fuzzer.logger import FuzzerLogger
-from fuzzer.observers.python_coverage import PythonCoverageObserver
+from fuzzer.observers.python_coverage import (
+    InProcessCoverageObserver,
+)
 from fuzzer.storage.database import FuzzerDatabase
 
 
@@ -28,8 +32,10 @@ class FuzzingEngine:
         self.corpus = CorpusManager(config.corpus_dir, self.db)
         self.mutator = Mutator()
         self.scheduler = self._build_scheduler()
-        self.executor = PythonCoverageExecutor(config.project_dir, config.harness_path)
-        self.observer = PythonCoverageObserver(config.project_dir)
+        self.executor = InProcessCoverageExecutor(
+            config.project_dir, config.harness_path
+        )
+        self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
         self.logger = FuzzerLogger(self.run_dir, config)
 

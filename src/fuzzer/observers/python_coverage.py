@@ -1,6 +1,12 @@
 """
 Observes coverage data produced by coverage.py and extracts
 covered lines and branches for files within the target project.
+
+Two observer variants are provided:
+
+* PythonCoverageObserver     – reads a ``.coverage`` file from disk.
+* InProcessCoverageObserver  – parses the in-memory coverage dict returned
+  by :class:`~fuzzer.executors.python_coverage.InProcessCoverageExecutor`.
 """
 
 from dataclasses import dataclass, field
@@ -56,6 +62,56 @@ class PythonCoverageObserver:
 
         if cleanup:
             coverage_file.unlink(missing_ok=True)
+
+        return result
+
+
+# --------------------------------------------------------------------------- #
+#  In-process (no-file) variant                                             #
+# --------------------------------------------------------------------------- #
+
+
+class InProcessCoverageObserver:
+    """
+    Derive :class:`CoverageData` from the coverage dict produced by
+    :class:`~fuzzer.executors.python_coverage.InProcessCoverageExecutor`.
+
+    The dict has the shape::
+
+        {
+            "<abs_file_path>": {
+                "lines": [int, ...],
+                "arcs":  [[int, int], ...]
+            },
+            ...
+        }
+
+    Results are scoped to files that live inside *project_dir*, matching
+    the behaviour of :class:`PythonCoverageObserver`.
+    """
+
+    def __init__(self, project_dir: str | Path):
+        self.project_dir = Path(project_dir).resolve()
+
+    def observe(self, coverage_dict: dict) -> CoverageData:
+        """
+        Parse *coverage_dict* and return coverage scoped to *project_dir*.
+        """
+        result = CoverageData()
+
+        for file_path, file_data in coverage_dict.items():
+            resolved = Path(file_path).resolve()
+            try:
+                resolved.relative_to(self.project_dir)
+            except ValueError:
+                continue  # outside project_dir — skip
+
+            key = str(resolved.relative_to(self.project_dir))
+            lines = file_data.get("lines") or []
+            arcs = file_data.get("arcs") or []
+
+            result.lines[key] = frozenset(lines)
+            result.branches[key] = frozenset(tuple(a) for a in arcs)
 
         return result
 
