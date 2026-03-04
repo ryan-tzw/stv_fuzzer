@@ -27,9 +27,46 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import List
+
+from .base import Executor
+
+# --------------------------------------------------------------------------- #
+#  Utility helpers                                                            #
+# --------------------------------------------------------------------------- #
 
 
-class PythonCoverageExecutor:
+def _prepare_env(project_dir: Path) -> dict[str, str]:
+    """Return an environment dict suitable for ``uv run``.
+
+    The only adjustments we make are to set ``PYTHONPATH`` so the target
+    project is importable and to remove ``VIRTUAL_ENV`` (``uv`` emits a
+    warning otherwise).
+    """
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_dir)
+    env.pop("VIRTUAL_ENV", None)
+    return env
+
+
+def _uv_base_cmd(project_dir: Path) -> List[str]:
+    """Base invocation used by all coverage executors.
+
+    Additional arguments (runner script, coverage options, etc.) are
+    appended by the caller.
+    """
+    return [
+        "uv",
+        "run",
+        "--project",
+        str(project_dir),
+        "--with",
+        "coverage",
+        "python",
+    ]
+
+
+class PythonCoverageExecutor(Executor):
     def __init__(
         self,
         project_dir: str | Path,
@@ -46,35 +83,30 @@ class PythonCoverageExecutor:
     def run(self, input_data: str | None = None) -> tuple[str, str, Path]:
         """
         Run the harness under coverage.py in the target's uv environment.
-        If input_data is provided, it is passed to the harness via stdin.
-        Returns (stdout, stderr, coverage_file_path).
+        If *input_data* is provided, it is passed to the harness via stdin.
+
+        Returns ``(stdout, stderr, coverage_file_path)``.  This signature
+        matches the base :class:`Executor` contract (``result`` is a ``Path``).
         """
         fd, coverage_path = tempfile.mkstemp(suffix=".coverage")
         os.close(fd)
         coverage_file = Path(coverage_path)
 
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(self.project_dir)
-        env.pop("VIRTUAL_ENV", None)  # to remove warning
+        env = _prepare_env(self.project_dir)
+
+        cmd = _uv_base_cmd(self.project_dir) + [
+            "-m",
+            "coverage",
+            "run",
+            "--branch",
+            "--data-file",
+            str(coverage_file),
+            str(self.script_path),
+            *self.script_args,
+        ]
 
         result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--project",
-                str(self.project_dir),
-                "--with",
-                "coverage",
-                "python",
-                "-m",
-                "coverage",
-                "run",
-                "--branch",
-                "--data-file",
-                str(coverage_file),
-                str(self.script_path),
-                *self.script_args,
-            ],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -93,7 +125,7 @@ class PythonCoverageExecutor:
 _RUNNER_SCRIPT = Path(__file__).parent / "_inprocess_runner.py"
 
 
-class InProcessCoverageExecutor:
+class InProcessCoverageExecutor(Executor):
     """
     Run a harness under coverage.py **without writing any .coverage file**.
 
@@ -135,24 +167,21 @@ class InProcessCoverageExecutor:
         If *input_data* is provided it is passed to the harness via stdin.
         Returns ``(harness_stdout, harness_stderr, coverage_dict)``.
         No temporary files are created or deleted.
+
+        The return type satisfies the :class:`Executor` interface; the third
+        element is a generic ``dict`` rather than a path since no file is
+        involved.
         """
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(self.project_dir)
-        env.pop("VIRTUAL_ENV", None)
+        env = _prepare_env(self.project_dir)
+
+        cmd = _uv_base_cmd(self.project_dir) + [
+            str(_RUNNER_SCRIPT),
+            str(self.script_path),
+            *self.script_args,
+        ]
 
         result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--project",
-                str(self.project_dir),
-                "--with",
-                "coverage",
-                "python",
-                str(_RUNNER_SCRIPT),
-                str(self.script_path),
-                *self.script_args,
-            ],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -179,7 +208,7 @@ class InProcessCoverageExecutor:
 # --------------------------------------------------------------------------- #
 
 
-class PersistentCoverageExecutor:
+class PersistentCoverageExecutor(Executor):
     """
     Run a harness under coverage.py using a **single long-lived worker**.
 
@@ -228,18 +257,9 @@ class PersistentCoverageExecutor:
             for a in (script_args or [])
         ]
 
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(self.project_dir)
-        env.pop("VIRTUAL_ENV", None)
+        env = _prepare_env(self.project_dir)
 
-        cmd = [
-            "uv",
-            "run",
-            "--project",
-            str(self.project_dir),
-            "--with",
-            "coverage",
-            "python",
+        cmd = _uv_base_cmd(self.project_dir) + [
             str(_RUNNER_SCRIPT),
             "--loop",
             str(self.script_path),
@@ -265,6 +285,11 @@ class PersistentCoverageExecutor:
         """
         Send *input_data* to the persistent worker and return
         ``(harness_stdout, harness_stderr, coverage_dict)``.
+
+        If the worker crashed and was restarted, the returned tuple will contain
+        an empty coverage dict and the stderr captured from the failed
+        invocation.  This behaviour is described in the :class:`Executor`
+        contract via the ``result`` element being ``Any``.
         """
         payload = self._worker.send({"input": input_data})
 
