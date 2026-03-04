@@ -33,6 +33,6 @@ Fuzzer project for 50.053 Software Testing and Verification
 - Note: Because the pre-commit is configured with Ruff's linter and formatter, if Ruff makes any formatting changes to your code, it will show an error.
   This should not be a problem, just stage the changes that Ruff made and commit again.
 
-        If it was a lint error however, you need to fix the error and commit again.
+    If it was a lint error however, you need to fix the error and commit again.
 
 - `main` branch is protected so push to a separate branch and make a PR to merge.
