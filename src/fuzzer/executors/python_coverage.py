@@ -21,70 +21,30 @@ Three executor variants are provided:
     coverage measurement happen per iteration.
 """
 
-import argparse
 import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List
 
-from .base import Executor
+from .coverage_base import (
+    _RUNNER_SCRIPT,
+)
+from .coverage_base import (
+    CoverageExecutorBase as _CoverageExecutorBase,
+)
+from .coverage_base import (
+    prepare_env as _prepare_env,
+)
+from .coverage_base import (
+    uv_base_cmd as _uv_base_cmd,
+)
 
-# --------------------------------------------------------------------------- #
-#  Utility helpers                                                            #
-# --------------------------------------------------------------------------- #
-
-
-def _prepare_env(project_dir: Path) -> dict[str, str]:
-    """Return an environment dict suitable for ``uv run``.
-
-    The only adjustments we make are to set ``PYTHONPATH`` so the target
-    project is importable and to remove ``VIRTUAL_ENV`` (``uv`` emits a
-    warning otherwise).
-    """
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(project_dir)
-    env.pop("VIRTUAL_ENV", None)
-    return env
-
-
-def _uv_base_cmd(project_dir: Path) -> List[str]:
-    """Base invocation used by all coverage executors.
-
-    Additional arguments (runner script, coverage options, etc.) are
-    appended by the caller.
-    """
-    return [
-        "uv",
-        "run",
-        "--project",
-        str(project_dir),
-        "--with",
-        "coverage",
-        "python",
-    ]
-
-
-class _CoverageExecutorBase(Executor):
-    """Shared initialisation for the three coverage-based executors.
-
-    This class is *not* exported from the package; it exists only to avoid
-    duplicating the path resolution and ``script_args`` normalisation logic.
-    """
-
-    def __init__(
-        self,
-        project_dir: str | Path,
-        script_path: str | Path,
-        script_args: list[str] | None = None,
-    ):
-        self.project_dir = Path(project_dir).resolve()
-        self.script_path = Path(script_path).resolve()
-        self.script_args = [
-            str(Path(a).resolve()) if Path(a).exists() else a
-            for a in (script_args or [])
-        ]
+__all__ = [
+    "PythonCoverageExecutor",
+    "InProcessCoverageExecutor",
+    "PersistentCoverageExecutor",
+]
 
 
 class PythonCoverageExecutor(_CoverageExecutorBase):
@@ -138,8 +98,6 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
 #  In-process (no-file) variant                                             #
 # --------------------------------------------------------------------------- #
 
-_RUNNER_SCRIPT = Path(__file__).parent / "_inprocess_runner.py"
-
 
 class InProcessCoverageExecutor(_CoverageExecutorBase):
     """
@@ -169,12 +127,7 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
         script_path: str | Path,
         script_args: list[str] | None = None,
     ):
-        self.project_dir = Path(project_dir).resolve()
-        self.script_path = Path(script_path).resolve()
-        self.script_args = [
-            str(Path(a).resolve()) if Path(a).exists() else a
-            for a in (script_args or [])
-        ]
+        super().__init__(project_dir, script_path, script_args)
 
     def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
         """
@@ -319,26 +272,3 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
 
     def __exit__(self, *_: object) -> None:
         self.stop()
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run a harness script with coverage.py"
-    )
-    parser.add_argument("project_dir", help="Path to the target's uv project directory")
-    parser.add_argument("script_path", help="Path to the harness script to run")
-    parser.add_argument(
-        "script_args",
-        nargs=argparse.REMAINDER,
-        help="Arguments to pass to the harness",
-    )
-    args = parser.parse_args()
-
-    executor = PythonCoverageExecutor(
-        args.project_dir, args.script_path, args.script_args
-    )
-    stdout, stderr, coverage_file = executor.run()
-
-    print("STDOUT:", stdout)
-    print("STDERR:", stderr)
-    print("Coverage file:", coverage_file)
