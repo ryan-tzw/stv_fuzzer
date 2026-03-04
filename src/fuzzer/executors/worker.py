@@ -1,32 +1,9 @@
-"""
-Generic persistent worker process.
+"""Persistent subprocess wrapper using a JSON protocol.
 
-``WorkerProcess`` manages a long-lived subprocess that speaks a
-newline-delimited JSON protocol over its stdin/stdout:
-
-    Executor → Worker  (stdin):   one JSON object per line (a request)
-    Worker   → Executor (stdout): one JSON object per line (a response)
-
-The subprocess is responsible for looping and handling requests; this
-class handles the lifecycle (lazy startup, crash detection, restart).
-
-Any harness runner that reads JSON from stdin and writes JSON to stdout
-in a loop is compatible with this driver — coverage, binary harnesses,
-remote proxies, etc.
-
-Typical usage::
-
-    worker = WorkerProcess(cmd=[...], env={...}, cwd="...")
-    # Lazy-started on the first send(); or call start() explicitly.
-
-    response = worker.send({"input": "..."})
-
-    worker.stop()
-
-Context-manager form::
-
-    with WorkerProcess(cmd=[...]) as worker:
-        response = worker.send({"input": "..."})
+WorkerProcess starts a long-lived child and exchanges newline-delimited
+JSON messages (request on stdin, response on stdout).  It's generic and can
+drive anything that speaks the protocol.  The object handles restarts and
+cleanup; :class:`WorkerCrashedError` is raised if crashes exceed the limit.
 """
 
 import json
@@ -43,22 +20,10 @@ class WorkerCrashedError(RuntimeError):
 
 class WorkerProcess:
     """
-    Drive a persistent subprocess over a newline-delimited JSON protocol.
+    Manage a subprocess that speaks NDJSON over stdin/stdout.
 
-    Parameters
-    ----------
-    cmd:
-        Full command used to launch the worker (passed directly to
-        ``subprocess.Popen``).
-    env:
-        Environment for the child process.  ``None`` inherits the current
-        process environment.
-    cwd:
-        Working directory for the child process.
-    max_restarts:
-        How many times the worker may be restarted after a crash before
-        :meth:`send` raises :class:`WorkerCrashedError`.  Use ``-1`` for
-        unlimited restarts.
+    ``cmd`` is passed to ``Popen``; ``max_restarts`` limits automatic
+    recovery.  ``env`` and ``cwd`` control the child's environment.
     """
 
     def __init__(
@@ -119,7 +84,6 @@ class WorkerProcess:
             self._proc = None
 
     def is_alive(self) -> bool:
-        """Return ``True`` if the worker subprocess is running."""
         return self._proc is not None and self._proc.poll() is None
 
     # ------------------------------------------------------------------ #
@@ -147,7 +111,7 @@ class WorkerProcess:
         return self._send_once(request)
 
     def _send_once(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Inner send; restarts the worker on crash and retries once."""
+        """Low-level send with one automatic restart on crash."""
         if self._proc is None or self._proc.stdin is None or self._proc.stdout is None:
             raise RuntimeError("WorkerProcess is not running")
         try:
@@ -167,7 +131,7 @@ class WorkerProcess:
     def _handle_crash(
         self, exc: Exception, original_request: dict[str, Any]
     ) -> dict[str, Any]:
-        """Handle a worker crash: kill the old process, restart if allowed."""
+        """Manage crash bookkeeping and optionally restart the worker."""
         stderr_tail = ""
         if self._proc is not None:
             try:

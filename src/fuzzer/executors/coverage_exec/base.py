@@ -1,10 +1,4 @@
-"""Shared helpers and base class for coverage-based executors.
-
-This module isolates the utility routines that are common across the three
-implementations in ``executors.py`` so that the executor file itself can
-focus solely on the public classes.  Keeping the helpers here also makes them
-easier to reuse later (for example by a differential executor).
-"""
+"""Shared helpers and base class for coverage executors."""
 
 import os
 from pathlib import Path

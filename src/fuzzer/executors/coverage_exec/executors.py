@@ -1,24 +1,11 @@
 """
-Runs a harness script under coverage.py inside the target's uv environment.
+Coverage executors for running a harness under ``uv`` + coverage.py.
 
-Three executor variants are provided:
+Variants:
 
-* PythonCoverageExecutor
-    Original implementation; writes a temp .coverage file that the observer
-    reads back from disk.
-
-* InProcessCoverageExecutor
-    Removes the file I/O bottleneck: uses a runner shim that keeps coverage
-    in-memory and returns results as JSON over stdout.  Still spawns a fresh
-    subprocess per iteration, so ``uv`` / Python startup cost is paid each
-    time.
-
-* PersistentCoverageExecutor
-    Eliminates subprocess startup overhead by keeping a single long-lived
-    worker process alive for the lifetime of the executor (via
-    :class:`~fuzzer.executors.worker.WorkerProcess`).  The worker runs the
-    runner shim in ``--loop`` mode, so only the harness execution and
-    coverage measurement happen per iteration.
+* ``PythonCoverageExecutor`` – temp-file based, spawn per run.
+* ``InProcessCoverageExecutor`` – subprocess runner returns JSON, avoids file I/O.
+* ``PersistentCoverageExecutor`` – long‑lived worker using ``WorkerProcess``.
 """
 
 import json
@@ -48,6 +35,8 @@ __all__ = [
 
 
 class PythonCoverageExecutor(_CoverageExecutorBase):
+    """Spawn a fresh ``uv`` process that writes a temporary ``.coverage`` file."""
+
     def __init__(
         self,
         project_dir: str | Path,
@@ -57,13 +46,7 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
         super().__init__(project_dir, script_path, script_args)
 
     def run(self, input_data: str | None = None) -> tuple[str, str, Path]:
-        """
-        Run the harness under coverage.py in the target's uv environment.
-        If *input_data* is provided, it is passed to the harness via stdin.
-
-        Returns ``(stdout, stderr, coverage_file_path)``.  This signature
-        matches the base :class:`Executor` contract (``result`` is a ``Path``).
-        """
+        """Execute once; return ``(stdout, stderr, coverage_path)``."""
         fd, coverage_path = tempfile.mkstemp(suffix=".coverage")
         os.close(fd)
         coverage_file = Path(coverage_path)
@@ -178,36 +161,10 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
 
 
 class PersistentCoverageExecutor(_CoverageExecutorBase):
-    """
-    Run a harness under coverage.py using a **single long-lived worker**.
+    """Keep a single worker process running for repeated coverage runs.
 
-    On the first call to :meth:`run` (or on :meth:`start`) a subprocess is
-    spawned running ``_inprocess_runner.py --loop``.  All subsequent calls
-    send a JSON request over stdin and read a JSON response over stdout,
-    paying only the cost of harness execution + coverage measurement rather
-    than full subprocess + ``uv`` startup on every iteration.
-
-    Crash recovery is delegated to :class:`~fuzzer.executors.worker.WorkerProcess`:
-    if the worker crashes it is automatically restarted (up to *max_restarts*
-    times) and the failed iteration returns an empty coverage dict so the
-    fuzzing loop can continue.
-
-    .. note::
-        Because the target package remains in ``sys.modules`` across iterations
-        inside the worker, module-level side effects (global state, caches, etc.)
-        persist between runs.  For stateless harnesses this has no impact.
-
-    Parameters
-    ----------
-    project_dir:
-        Root of the target ``uv`` project.
-    script_path:
-        Path to the harness script.
-    script_args:
-        Extra arguments forwarded to the harness.
-    max_restarts:
-        How many worker crashes to tolerate before raising
-        :class:`~fuzzer.executors.worker.WorkerCrashedError`.
+    The worker uses ``_inprocess_runner.py --loop``; crashes are auto-
+    restarted (controlled by *max_restarts*).
     """
 
     def __init__(
@@ -238,22 +195,17 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
         )
 
     def start(self) -> None:
-        """Explicitly start the worker (also called lazily on first :meth:`run`)."""
+        """Start the worker process."""
         self._worker.start()
 
     def stop(self) -> None:
-        """Shut down the worker process."""
-        self._worker.stop()
+        """Terminate the worker."""
 
     def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
-        """
-        Send *input_data* to the persistent worker and return
-        ``(harness_stdout, harness_stderr, coverage_dict)``.
+        """Execute via worker and return ``(stdout, stderr, coverage)``.
 
-        If the worker crashed and was restarted, the returned tuple will contain
-        an empty coverage dict and the stderr captured from the failed
-        invocation.  This behaviour is described in the :class:`Executor`
-        contract via the ``result`` element being ``Any``.
+        On a crash the result includes ``"_worker_error"`` and an empty
+        coverage dict; callers handle this as needed.
         """
         payload = self._worker.send({"input": input_data})
 

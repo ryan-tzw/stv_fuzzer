@@ -1,8 +1,4 @@
-"""Manual CLI for running coverage executors.
-
-This script is a lightweight front end for the classes in this package.  It
-exists solely for experimentation and is **not** used by the fuzzing engine.
-"""
+"""Command-line front end for the coverage executors (for testing only)."""
 
 import argparse
 

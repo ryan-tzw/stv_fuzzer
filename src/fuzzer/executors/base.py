@@ -1,14 +1,9 @@
 """
-Base executor interface and utilities.
+Base executor interface.
 
-An ``Executor`` is responsible for driving a single fuzz target execution.  It
-may be as simple as invoking ``subprocess.run`` or as complex as maintaining a
-long-lived worker process.  All executors expose the same minimal API so the
-fuzzing engine can be agnostic about the underlying execution strategy.
-
-The return type of :meth:`run` is intentionally loose (``Any``) because
-different executors may produce different kinds of auxiliary data: coverage
-information, file paths, differential flags, etc.
+Executors run a fuzz target and return ``(stdout, stderr, result)``; the
+result is generic (coverage, path, diff, etc.).  ``start``/``stop`` are
+optional hooks for persistent implementations.
 """
 
 from abc import ABC, abstractmethod

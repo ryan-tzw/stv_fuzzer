@@ -1,44 +1,9 @@
-"""
-In-process coverage runner shim.
+"""Runner shim for coverage.py.
 
-Single-shot mode (default)::
-
-    python _inprocess_runner.py <harness_path> [harness_args...]
-
-    Reads a fuzz input from stdin, runs the harness once, writes one JSON
-    line to stdout, then exits.
-
-Persistent (loop) mode::
-
-    python _inprocess_runner.py --loop <harness_path> [harness_args...]
-
-    Stays alive and processes requests indefinitely.  Each request is a
-    JSON line read from stdin; each response is a JSON line written to
-    stdout.  The loop ends on stdin EOF or when a request contains
-    ``{"cmd": "exit"}``.
-
-    Request schema:  {"input": "<fuzz input string or null>"}
-    Response schema: see below.
-
-Response schema (both modes)::
-
-    {
-        "stdout":    "<captured harness stdout>",
-        "stderr":    "<captured harness stderr>",
-        "exit_code": <int>,
-        "coverage":  {
-            "<abs_file_path>": {
-                "lines": [int, ...],
-                "arcs":  [[int, int], ...]
-            },
-            ...
-        }
-    }
-
-In loop mode the target module and its dependencies remain in
-``sys.modules`` across iterations (intentional — avoids repeated import
-overhead).  Coverage is measured afresh for each run via a new
-``Coverage`` instance, so per-iteration signals remain accurate.
+Works in single-shot or ``--loop`` mode, communicating JSON over stdin/stdout.
+In loop mode the harness stays loaded and coverage is re‑measured each run.
+The output is a dict with keys ``stdout``, ``stderr``, ``exit_code`` and
+``coverage``.  See docs for ``_run_once`` for details.
 """
 
 import io
