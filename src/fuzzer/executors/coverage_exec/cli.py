@@ -2,7 +2,7 @@
 
 import argparse
 
-from .executors import PythonCoverageExecutor
+from .file_executor import PythonCoverageExecutor
 
 
 def main() -> None:

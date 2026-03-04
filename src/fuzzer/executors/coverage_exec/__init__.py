@@ -8,11 +8,9 @@ already provides that context.
 """
 
 from .cli import main as coverage_cli_main
-from .executors import (
-    InProcessCoverageExecutor,
-    PersistentCoverageExecutor,
-    PythonCoverageExecutor,
-)
+from .file_executor import PythonCoverageExecutor
+from .inprocess import InProcessCoverageExecutor
+from .persistent import PersistentCoverageExecutor
 
 __all__ = [
     "PythonCoverageExecutor",
