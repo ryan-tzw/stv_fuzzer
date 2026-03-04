@@ -1,7 +1,7 @@
 """Public API for the ``fuzzer.executors`` package."""
 
 from .base import Executor
-from .python_coverage import (
+from .coverage_exec.executors import (
     InProcessCoverageExecutor,
     PersistentCoverageExecutor,
     PythonCoverageExecutor,

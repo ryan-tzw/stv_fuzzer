@@ -27,16 +27,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .coverage_base import (
+from .base import (
     _RUNNER_SCRIPT,
 )
-from .coverage_base import (
+from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
-from .coverage_base import (
+from .base import (
     prepare_env as _prepare_env,
 )
-from .coverage_base import (
+from .base import (
     uv_base_cmd as _uv_base_cmd,
 )
 

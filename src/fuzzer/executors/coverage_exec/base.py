@@ -1,7 +1,7 @@
 """Shared helpers and base class for coverage-based executors.
 
 This module isolates the utility routines that are common across the three
-implementations in ``python_coverage.py`` so that the executor file itself can
+implementations in ``executors.py`` so that the executor file itself can
 focus solely on the public classes.  Keeping the helpers here also makes them
 easier to reuse later (for example by a differential executor).
 """
@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import List
 
-_RUNNER_SCRIPT = Path(__file__).parent / "_inprocess_runner.py"
+_RUNNER_SCRIPT = Path(__file__).parent.parent / "_inprocess_runner.py"
 
 
 def prepare_env(project_dir: Path) -> dict[str, str]:

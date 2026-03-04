@@ -8,9 +8,7 @@ from datetime import datetime
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
-from fuzzer.executors.python_coverage import (
-    PersistentCoverageExecutor,
-)
+from fuzzer.executors import PersistentCoverageExecutor
 from fuzzer.feedback import CoverageFeedback
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers.python_coverage import (

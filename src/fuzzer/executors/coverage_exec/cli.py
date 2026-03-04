@@ -1,8 +1,12 @@
-"""Purely for manual experimentation and is not used by the fuzzing engine."""
+"""Manual CLI for running coverage executors.
+
+This script is a lightweight front end for the classes in this package.  It
+exists solely for experimentation and is **not** used by the fuzzing engine.
+"""
 
 import argparse
 
-from .python_coverage import PythonCoverageExecutor
+from .executors import PythonCoverageExecutor
 
 
 def main() -> None:

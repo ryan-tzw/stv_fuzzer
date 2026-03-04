@@ -6,7 +6,7 @@ Two observer variants are provided:
 
 * PythonCoverageObserver     – reads a ``.coverage`` file from disk.
 * InProcessCoverageObserver  – parses the in-memory coverage dict returned
-  by :class:`~fuzzer.executors.python_coverage.InProcessCoverageExecutor`.
+  by :class:`~fuzzer.executors.coverage_exec.python.InProcessCoverageExecutor`.
 """
 
 from dataclasses import dataclass, field
@@ -74,7 +74,7 @@ class PythonCoverageObserver:
 class InProcessCoverageObserver:
     """
     Derive :class:`CoverageData` from the coverage dict produced by
-    :class:`~fuzzer.executors.python_coverage.InProcessCoverageExecutor`.
+    :class:`~fuzzer.executors.coverage.python.InProcessCoverageExecutor`.
 
     The dict has the shape::
 
@@ -119,7 +119,7 @@ class InProcessCoverageObserver:
 if __name__ == "__main__":
     import argparse
 
-    from fuzzer.executors.python_coverage import PythonCoverageExecutor
+    from fuzzer.executors.coverage_exec.python import PythonCoverageExecutor
 
     parser = argparse.ArgumentParser(description="Run a harness and observe coverage")
     parser.add_argument("project_dir", help="Path to the target's uv project directory")
