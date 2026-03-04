@@ -66,7 +66,13 @@ def _uv_base_cmd(project_dir: Path) -> List[str]:
     ]
 
 
-class PythonCoverageExecutor(Executor):
+class _CoverageExecutorBase(Executor):
+    """Shared initialisation for the three coverage-based executors.
+
+    This class is *not* exported from the package; it exists only to avoid
+    duplicating the path resolution and ``script_args`` normalisation logic.
+    """
+
     def __init__(
         self,
         project_dir: str | Path,
@@ -79,6 +85,16 @@ class PythonCoverageExecutor(Executor):
             str(Path(a).resolve()) if Path(a).exists() else a
             for a in (script_args or [])
         ]
+
+
+class PythonCoverageExecutor(_CoverageExecutorBase):
+    def __init__(
+        self,
+        project_dir: str | Path,
+        script_path: str | Path,
+        script_args: list[str] | None = None,
+    ):
+        super().__init__(project_dir, script_path, script_args)
 
     def run(self, input_data: str | None = None) -> tuple[str, str, Path]:
         """
@@ -125,7 +141,7 @@ class PythonCoverageExecutor(Executor):
 _RUNNER_SCRIPT = Path(__file__).parent / "_inprocess_runner.py"
 
 
-class InProcessCoverageExecutor(Executor):
+class InProcessCoverageExecutor(_CoverageExecutorBase):
     """
     Run a harness under coverage.py **without writing any .coverage file**.
 
@@ -208,7 +224,7 @@ class InProcessCoverageExecutor(Executor):
 # --------------------------------------------------------------------------- #
 
 
-class PersistentCoverageExecutor(Executor):
+class PersistentCoverageExecutor(_CoverageExecutorBase):
     """
     Run a harness under coverage.py using a **single long-lived worker**.
 
@@ -250,12 +266,7 @@ class PersistentCoverageExecutor(Executor):
     ) -> None:
         from fuzzer.executors.worker import WorkerProcess
 
-        self.project_dir = Path(project_dir).resolve()
-        self.script_path = Path(script_path).resolve()
-        self.script_args = [
-            str(Path(a).resolve()) if Path(a).exists() else a
-            for a in (script_args or [])
-        ]
+        super().__init__(project_dir, script_path, script_args)
 
         env = _prepare_env(self.project_dir)
 
