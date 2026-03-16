@@ -32,6 +32,11 @@ class FuzzerConfig:
     energy_c: float = 1.0
     max_energy: int = 100
 
+    # Executor mode (persistent or inprocess for coverage; differential uses
+    # a blackbox command + the reference harness)
+    executor: str = "persistent"
+    blackbox_cmd: str | None = None
+
     @property
     def harness_path(self) -> Path:
         return HARNESSES_DIR / f"{self.harness}.py"

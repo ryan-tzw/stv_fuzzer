@@ -8,7 +8,11 @@ from datetime import datetime
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
-from fuzzer.executors import PersistentCoverageExecutor
+from fuzzer.executors import (
+    DifferentialExecutor,
+    InProcessCoverageExecutor,
+    PersistentCoverageExecutor,
+)
 from fuzzer.feedback import CoverageFeedback
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers.python_coverage import (
@@ -30,9 +34,7 @@ class FuzzingEngine:
         self.corpus = CorpusManager(config.corpus_dir, self.db)
         self.mutator = Mutator()
         self.scheduler = self._build_scheduler()
-        self.executor = PersistentCoverageExecutor(
-            config.project_dir, config.harness_path
-        )
+        self.executor = self._build_executor(config)
         self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
         self.logger = FuzzerLogger(self.run_dir, config)
@@ -46,6 +48,26 @@ class FuzzingEngine:
             return RandomScheduler()
         else:
             raise ValueError(f"Unknown scheduler: {self.config.scheduler!r}")
+
+    def _build_executor(self, config: FuzzerConfig):
+        """Construct the chosen executor implementation."""
+        if config.executor == "persistent":
+            return PersistentCoverageExecutor(config.project_dir, config.harness_path)
+        if config.executor == "inprocess":
+            return InProcessCoverageExecutor(config.project_dir, config.harness_path)
+        if config.executor == "differential":
+            if not config.blackbox_cmd:
+                raise ValueError(
+                    "--blackbox-cmd is required when --executor=differential"
+                )
+            import shlex
+
+            black_cmd = shlex.split(config.blackbox_cmd)
+            return DifferentialExecutor(
+                black_cmd,
+                PersistentCoverageExecutor(config.project_dir, config.harness_path),
+            )
+        raise ValueError(f"Unknown executor: {config.executor!r}")
 
     def run(self) -> None:
         self.corpus.load()

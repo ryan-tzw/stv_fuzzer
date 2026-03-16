@@ -64,6 +64,19 @@ def main() -> int:
         help=f"Max energy cap for FastScheduler (default: {FuzzerConfig.max_energy})",
     )
 
+    parser.add_argument(
+        "--executor",
+        choices=["persistent", "inprocess", "differential"],
+        default=None,
+        help=f"Executor mode (default: {FuzzerConfig.executor})",
+    )
+    parser.add_argument(
+        "--blackbox-cmd",
+        type=str,
+        default=None,
+        help="Command to run the blackbox target (for differential mode)",
+    )
+
     args = parser.parse_args()
 
     # Start from config defaults, then apply any explicit CLI overrides
@@ -84,6 +97,10 @@ def main() -> int:
         config.energy_c = args.energy_c
     if args.max_energy is not None:
         config.max_energy = args.max_energy
+    if args.executor is not None:
+        config.executor = args.executor
+    if args.blackbox_cmd is not None:
+        config.blackbox_cmd = args.blackbox_cmd
 
     FuzzingEngine(config).run()
     return 0
