@@ -22,7 +22,7 @@ class FuzzerConfig:
     runs_dir: Path = Path("runs")
 
     # Stopping conditions (-1 = disabled)
-    max_iterations: int = 1000
+    max_iterations: int = 10000
     time_limit: int = 60  # seconds
 
     # Scheduler ("random" or "fast")

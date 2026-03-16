@@ -119,7 +119,7 @@ class InProcessCoverageObserver:
 if __name__ == "__main__":
     import argparse
 
-    from fuzzer.executors.coverage_exec.python import PythonCoverageExecutor
+    from fuzzer.executors.coverage_exec.file_executor import PythonCoverageExecutor
 
     parser = argparse.ArgumentParser(description="Run a harness and observe coverage")
     parser.add_argument("project_dir", help="Path to the target's uv project directory")
