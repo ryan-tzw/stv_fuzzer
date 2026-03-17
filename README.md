@@ -23,7 +23,14 @@ Fuzzer project for 50.053 Software Testing and Verification
     git clone https://github.com/TrustWare-Research-Group/json-decoder.git
     ```
 
-4. Run
+4. Run the script first if you wish to apply grammar based mutation
+
+    ``` bash
+    chmod +x compile_grammars.sh
+    ./compile_grammars.sh
+    ```
+
+5. Run
     ```
     uv run python -m fuzzer targets/<TARGET_DIR> <HARNESS_FILENAME> <DATA_TYPE>
     ```
