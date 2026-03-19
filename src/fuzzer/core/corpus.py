@@ -2,6 +2,7 @@
 Corpus manager: loads seed inputs, tracks metadata, and persists via the database.
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,10 +44,10 @@ class CorpusManager:
             # First run — load from seed files and persist to DB
             for path in sorted(self.corpus_dir.iterdir()):
                 if path.is_file():
-                    data = path.read_text(encoding="utf-8")
-                    seed = SeedInput(data=data)
-                    self._db.save_seed(seed)
-                    self._seeds.append(seed)
+                    for data in self._load_seed_strings(path):
+                        seed = SeedInput(data=data)
+                        self._db.save_seed(seed)
+                        self._seeds.append(seed)
 
         if not self._seeds:
             raise ValueError(
@@ -56,6 +57,34 @@ class CorpusManager:
     def seeds(self) -> list[SeedInput]:
         """Return the current list of seeds."""
         return list(self._seeds)
+
+    def _load_seed_strings(self, path: Path) -> list[str]:
+        """Return one or more seed strings loaded from a seed file.
+
+        For ``.json`` files, if the top-level value is a JSON array, each
+        element becomes an individual seed (strings are used as-is; non-string
+        elements are compact JSON-encoded). All other files are loaded as a
+        single seed string exactly as before.
+        """
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.lower() != ".json":
+            return [text]
+
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            return [text]
+
+        if not isinstance(value, list):
+            return [text]
+
+        seeds: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                seeds.append(item)
+            else:
+                seeds.append(json.dumps(item, sort_keys=True, separators=(",", ":")))
+        return seeds
 
     def add(self, data: str) -> SeedInput:
         """
