@@ -4,6 +4,7 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 
 import time
 from datetime import datetime
+from pathlib import Path
 
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
@@ -38,6 +39,10 @@ class FuzzingEngine:
         self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
         self.logger = FuzzerLogger(self.run_dir, config)
+        self._total_executable_lines = self._compute_total_executable_lines(
+            config.project_dir
+        )
+        self.logger.set_total_lines(self._total_executable_lines)
 
     def _build_scheduler(self) -> Scheduler:
         if self.config.scheduler == "fast":
@@ -68,6 +73,27 @@ class FuzzingEngine:
                 PersistentCoverageExecutor(config.project_dir, config.harness_path),
             )
         raise ValueError(f"Unknown executor: {config.executor!r}")
+
+    def _compute_total_executable_lines(self, project_dir: Path) -> int:
+        """Compute total executable Python statements for line coverage percent."""
+        try:
+            from coverage import Coverage
+        except Exception:
+            return 0
+
+        cov = Coverage(data_file=None)
+        total = 0
+        for py_file in project_dir.rglob("*.py"):
+            if ".venv" in py_file.parts or "__pycache__" in py_file.parts:
+                continue
+            try:
+                _filename, statements, _excluded, _missing, _missing_formatted = (
+                    cov.analysis2(str(py_file))
+                )
+            except Exception:
+                continue
+            total += len(statements)
+        return total
 
     def run(self) -> None:
         self.corpus.load()
@@ -114,6 +140,9 @@ class FuzzingEngine:
 
                         signal = self.observer.observe(exec_result.raw_coverage)
                         result = self.feedback.evaluate(signal, exec_result.stderr)
+                        self.logger.update_line_coverage(
+                            self.feedback.covered_lines_count()
+                        )
 
                         if result.is_crash:
                             is_new = self.db.record_crash(mutated, exec_result.stderr)

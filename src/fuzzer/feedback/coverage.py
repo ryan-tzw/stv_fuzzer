@@ -73,3 +73,11 @@ class CoverageFeedback:
         for file, branches in signal.branches.items():
             for branch in branches:
                 self._seen_branches.add((file, branch))
+
+    def covered_lines_count(self) -> int:
+        """Return the number of unique covered (file, line) pairs seen so far."""
+        return len(self._seen_lines)
+
+    def covered_branches_count(self) -> int:
+        """Return the number of unique covered (file, branch) pairs seen so far."""
+        return len(self._seen_branches)

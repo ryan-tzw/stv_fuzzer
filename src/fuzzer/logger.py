@@ -42,6 +42,8 @@ class FuzzerLogger:
         self._unique_crashes: int = 0
         self._diff_total: int = 0
         self._diff_counts: Counter[str] = Counter()
+        self._covered_lines: int = 0
+        self._total_lines: int = 0
         self._start_time: float | None = None
         self._events: list[Text] = []
 
@@ -118,6 +120,14 @@ class FuzzerLogger:
         if diff_kind:
             self._diff_counts[diff_kind] += 1
 
+    def set_total_lines(self, total_lines: int) -> None:
+        """Set total executable lines used for line coverage percentage."""
+        self._total_lines = max(0, total_lines)
+
+    def update_line_coverage(self, covered_lines: int) -> None:
+        """Update current unique covered-line count."""
+        self._covered_lines = max(0, covered_lines)
+
     def print_summary(self, iteration: int, elapsed: float) -> None:
         """Print a final summary below the dashboard after Live exits."""
         elapsed_str = str(timedelta(seconds=int(elapsed)))
@@ -130,6 +140,7 @@ class FuzzerLogger:
         summary.add_row("Corpus size:", str(self._corpus_size))
         summary.add_row("Unique crashes:", str(self._unique_crashes))
         summary.add_row("Differentials:", str(self._diff_total))
+        summary.add_row("Line coverage:", self._line_coverage_text())
         summary.add_row("Elapsed:", elapsed_str)
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
@@ -165,6 +176,12 @@ class FuzzerLogger:
         elapsed = time.monotonic() - self._start_time
         return self._iteration / elapsed if elapsed > 0 else 0.0
 
+    def _line_coverage_text(self) -> str:
+        if self._total_lines <= 0:
+            return f"{self._covered_lines}/?"
+        pct = (self._covered_lines / self._total_lines) * 100.0
+        return f"{self._covered_lines}/{self._total_lines} ({pct:.1f}%)"
+
     # --- Panels --------------------------------------------------------
 
     def _build_header(self) -> Panel:
@@ -192,6 +209,7 @@ class FuzzerLogger:
         grid.add_row("Corpus size:", str(self._corpus_size))
         grid.add_row("Unique crashes:", str(self._unique_crashes))
         grid.add_row("Differentials:", str(self._diff_total))
+        grid.add_row("Line coverage:", self._line_coverage_text())
         grid.add_row("Elapsed:", self._elapsed_str())
         grid.add_row("Exec/s:", f"{self._execs_per_s():.1f}")
         return Panel(grid, title="[bold green]Stats[/bold green]", border_style="green")
