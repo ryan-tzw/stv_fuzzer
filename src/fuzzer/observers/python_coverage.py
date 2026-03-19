@@ -12,6 +12,8 @@ Two observer variants are provided:
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from fuzzer.executors.types import RawCoverageMap
+
 
 @dataclass
 class CoverageData:
@@ -93,7 +95,7 @@ class InProcessCoverageObserver:
     def __init__(self, project_dir: str | Path):
         self.project_dir = Path(project_dir).resolve()
 
-    def observe(self, coverage_dict: dict) -> CoverageData:
+    def observe(self, coverage_dict: RawCoverageMap) -> CoverageData:
         """
         Parse *coverage_dict* and return coverage scoped to *project_dir*.
         """

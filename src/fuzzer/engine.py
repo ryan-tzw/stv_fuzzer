@@ -106,14 +106,14 @@ class FuzzingEngine:
                     for _ in range(energy):
                         mutated = self.mutator.mutate(seed.data)
 
-                        stdout, stderr, coverage_file = self.executor.run(mutated)
+                        exec_result = self.executor.run(mutated)
                         self.corpus.record_fuzzed(seed)
 
-                        signal = self.observer.observe(coverage_file)
-                        result = self.feedback.evaluate(signal, stderr)
+                        signal = self.observer.observe(exec_result.raw_coverage)
+                        result = self.feedback.evaluate(signal, exec_result.stderr)
 
                         if result.is_crash:
-                            is_new = self.db.record_crash(mutated, stderr)
+                            is_new = self.db.record_crash(mutated, exec_result.stderr)
                             if is_new:
                                 unique_crashes += 1
                                 self.logger.log_crash(iteration, unique_crashes)
