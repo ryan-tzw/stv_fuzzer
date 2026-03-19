@@ -1,7 +1,9 @@
 """Simple executor that runs a command with given stdin and returns output."""
 
 from subprocess import PIPE, run
-from typing import List, Optional, Tuple
+from typing import List, Optional
+
+from fuzzer.executors.types import ExecutorResult
 
 
 class RawProcessExecutor:
@@ -21,10 +23,10 @@ class RawProcessExecutor:
         self.cwd = cwd
         self.env = env
 
-    def run(self, input_data: str | None = None) -> Tuple[str, str, int]:
+    def run(self, input_data: str | None = None) -> ExecutorResult:
         """Run the command, feeding *input_data* to stdin.
 
-        Returns ``(stdout, stderr, returncode)``.
+        Returns an ExecutorResult.
         """
         result = run(
             self.cmd,
@@ -35,4 +37,9 @@ class RawProcessExecutor:
             env=self.env,
             input=input_data,
         )
-        return result.stdout, result.stderr, result.returncode
+        return ExecutorResult(
+            stdout=result.stdout,
+            stderr=result.stderr,
+            return_code=result.returncode,
+            raw_coverage={},
+        )

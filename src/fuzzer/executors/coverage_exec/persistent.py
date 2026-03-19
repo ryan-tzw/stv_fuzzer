@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from fuzzer.executors.types import ExecutorResult
+
 from .base import (
     _RUNNER_SCRIPT,
 )
@@ -52,17 +54,24 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
         """Terminate the worker."""
         self._worker.stop()
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
-        """Execute via worker and return ``(stdout, stderr, coverage)``."""
+    def run(self, input_data: str | None = None) -> ExecutorResult:
+        """Execute via worker and return an ExecutorResult."""
         payload = self._worker.send({"input": input_data})
 
         if "_worker_error" in payload:
-            return "", payload.get("_stderr", ""), {}
+            return ExecutorResult(
+                stdout="",
+                stderr=payload.get("_stderr", ""),
+                return_code=-1,
+                raw_coverage={},
+                diff_kind="executor_failure",
+            )
 
-        return (
-            payload.get("stdout", ""),
-            payload.get("stderr", ""),
-            payload.get("coverage", {}),
+        return ExecutorResult(
+            stdout=payload.get("stdout", ""),
+            stderr=payload.get("stderr", ""),
+            return_code=int(payload.get("exit_code", 0)),
+            raw_coverage=payload.get("coverage", {}),
         )
 
     def __enter__(self) -> "PersistentCoverageExecutor":

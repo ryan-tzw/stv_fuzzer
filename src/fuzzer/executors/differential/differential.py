@@ -1,31 +1,53 @@
 """Differential executor that compares a blackbox run with a reference."""
 
-from typing import Any, List, Tuple
+from typing import List, Protocol
+
+from fuzzer.executors.types import ExecutorResult
 
 from .raw import RawProcessExecutor
+
+
+class _ReferenceExecutor(Protocol):
+    def run(self, input_data: str | None = None) -> ExecutorResult: ...
 
 
 class DifferentialExecutor:
     """Run both a blackbox command and a reference executor side-by-side.
 
     *black_cmd* is executed with :class:`RawProcessExecutor`.
-    *ref_executor* should be an executor returning ``(stdout, stderr, coverage)``
+    *ref_executor* should be an executor returning :class:`ExecutorResult`
     (e.g. a coverage executor).
-
-    ``run`` returns a tuple ``(stdout, stderr, coverage, diff)`` where *diff*
-    is ``True`` if either output differs or the blackbox exit code was nonzero.
     """
 
     def __init__(
         self,
         black_cmd: List[str],
-        ref_executor: Any,
+        ref_executor: _ReferenceExecutor,
     ) -> None:
         self.black = RawProcessExecutor(black_cmd)
         self.ref = ref_executor
 
-    def run(self, input_data: str | None = None) -> Tuple[str, str, Any, bool]:
-        stdout_b, stderr_b, code_b = self.black.run(input_data)
-        stdout_r, stderr_r, cov = self.ref.run(input_data)
-        diff = (stdout_b != stdout_r) or (stderr_b != stderr_r) or (code_b != 0)
-        return stdout_b, stderr_b, cov, diff
+    def run(self, input_data: str | None = None) -> ExecutorResult:
+        black = self.black.run(input_data)
+        ref = self.ref.run(input_data)
+
+        diff_kind = None
+        if black.stdout != ref.stdout:
+            diff_kind = "stdout_mismatch"
+        elif black.stderr != ref.stderr:
+            diff_kind = "stderr_mismatch"
+        elif black.return_code != ref.return_code:
+            diff_kind = "return_code_mismatch"
+        elif black.return_code != 0:
+            diff_kind = "blackbox_nonzero"
+        elif ref.return_code != 0:
+            diff_kind = "reference_nonzero"
+
+        return ExecutorResult(
+            stdout=black.stdout,
+            stderr=black.stderr,
+            return_code=black.return_code,
+            raw_coverage=ref.raw_coverage,
+            is_diff=diff_kind is not None,
+            diff_kind=diff_kind,
+        )

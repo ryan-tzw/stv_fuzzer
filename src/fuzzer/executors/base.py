@@ -1,32 +1,27 @@
 """
 Base executor interface.
 
-Executors run a fuzz target and return ``(stdout, stderr, result)``; the
-result is generic (coverage, path, diff, etc.).  ``start``/``stop`` are
-optional hooks for persistent implementations.
+Executors run a fuzz target and return an :class:`ExecutorResult`.
+``start``/``stop`` are optional hooks for persistent implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+
+from fuzzer.executors.types import ExecutorResult
 
 
 class Executor(ABC):
     """Abstract base class for fuzzing executors.
 
-    The engine expects ``run`` to return a three-element tuple ``(stdout,
-    stderr, result)``.  ``result`` may be a coverage dictionary, a file path, a
-    boolean diff indicator, or anything else that makes sense for the
-    concrete executor.
+    The engine expects ``run`` to return an :class:`ExecutorResult`.
 
     Executors that need to perform setup/teardown (persistent workers,
     networked proxies, etc.) may override :meth:`start` and :meth:`stop`.
     """
 
     @abstractmethod
-    def run(self, input_data: str | None = None) -> Tuple[str, str, Any]:
-        """Execute the target with *input_data* and return ``(stdout, stderr,
-        result)``.
-        """
+    def run(self, input_data: str | None = None) -> ExecutorResult:
+        """Execute the target with *input_data* and return an ExecutorResult."""
         ...
 
     # ``start``/``stop`` are optional hooks; the default implementations are
