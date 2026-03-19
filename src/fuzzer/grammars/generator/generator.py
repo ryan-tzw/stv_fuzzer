@@ -50,7 +50,6 @@ class GrammarSeedGenerator:
                 and not name.startswith("_")
                 and name != "max_depth"
             ):
-                print(name)
                 return name
 
         raise AttributeError(f"Could not identify a start rule for {self.target}")
