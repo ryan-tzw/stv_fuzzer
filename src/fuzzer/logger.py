@@ -14,6 +14,7 @@ Usage:
 """
 
 import time
+from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 
@@ -39,6 +40,8 @@ class FuzzerLogger:
         self._iteration: int = 0
         self._corpus_size: int = 0
         self._unique_crashes: int = 0
+        self._diff_total: int = 0
+        self._diff_counts: Counter[str] = Counter()
         self._start_time: float | None = None
         self._events: list[Text] = []
 
@@ -109,6 +112,12 @@ class FuzzerLogger:
     def log_stop_reason(self, reason: str) -> None:
         self._push_event(f"Stopped — {reason}", style="bold yellow")
 
+    def record_differential(self, diff_kind: str | None) -> None:
+        """Record a differential mismatch for stats/summary output."""
+        self._diff_total += 1
+        if diff_kind:
+            self._diff_counts[diff_kind] += 1
+
     def print_summary(self, iteration: int, elapsed: float) -> None:
         """Print a final summary below the dashboard after Live exits."""
         elapsed_str = str(timedelta(seconds=int(elapsed)))
@@ -120,9 +129,19 @@ class FuzzerLogger:
         summary.add_row("Iterations:", str(iteration))
         summary.add_row("Corpus size:", str(self._corpus_size))
         summary.add_row("Unique crashes:", str(self._unique_crashes))
+        summary.add_row("Differentials:", str(self._diff_total))
         summary.add_row("Elapsed:", elapsed_str)
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
+
+        if self._diff_counts:
+            self._console.print("\n[bold]Differential breakdown[/bold]")
+            breakdown = Table.grid(padding=(0, 2))
+            breakdown.add_column(style="bold")
+            breakdown.add_column(style="cyan", justify="right")
+            for kind, count in self._diff_counts.most_common():
+                breakdown.add_row(kind, str(count))
+            self._console.print(breakdown)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -172,6 +191,7 @@ class FuzzerLogger:
         grid.add_row("Iterations:", str(self._iteration))
         grid.add_row("Corpus size:", str(self._corpus_size))
         grid.add_row("Unique crashes:", str(self._unique_crashes))
+        grid.add_row("Differentials:", str(self._diff_total))
         grid.add_row("Elapsed:", self._elapsed_str())
         grid.add_row("Exec/s:", f"{self._execs_per_s():.1f}")
         return Panel(grid, title="[bold green]Stats[/bold green]", border_style="green")
