@@ -8,6 +8,8 @@ from .raw import RawProcessExecutor
 
 
 class _ReferenceExecutor(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
     def run(self, input_data: str | None = None) -> ExecutorResult: ...
 
 
@@ -27,12 +29,22 @@ class DifferentialExecutor:
         self.black = RawProcessExecutor(black_cmd)
         self.ref = ref_executor
 
+    def start(self) -> None:
+        self.black.start()
+        self.ref.start()
+
+    def stop(self) -> None:
+        self.black.stop()
+        self.ref.stop()
+
     def run(self, input_data: str | None = None) -> ExecutorResult:
         black = self.black.run(input_data)
         ref = self.ref.run(input_data)
 
         diff_kind = None
-        if black.stdout != ref.stdout:
+        if black.diff_kind == "executor_failure" or ref.diff_kind == "executor_failure":
+            diff_kind = "executor_failure"
+        elif black.stdout != ref.stdout:
             diff_kind = "stdout_mismatch"
         elif black.stderr != ref.stderr:
             diff_kind = "stderr_mismatch"

@@ -71,6 +71,7 @@ class FuzzingEngine:
 
     def run(self) -> None:
         self.corpus.load()
+        self.executor.start()
 
         iteration = 0
         unique_crashes = 0
@@ -131,6 +132,7 @@ class FuzzingEngine:
                 self.logger.log_stop_reason("interrupted by user")
 
             finally:
+                self.executor.stop()
                 self.db.flush_corpus(self.corpus.seeds())
                 self.db.close()
 

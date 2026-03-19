@@ -29,6 +29,12 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
+    def start(self) -> None:
+        """No-op lifecycle hook for interface compatibility."""
+
+    def stop(self) -> None:
+        """No-op lifecycle hook for interface compatibility."""
+
     def run(self, input_data: str | None = None) -> ExecutorResult:
         """Return execution output and raw coverage in ExecutorResult."""
         env = _prepare_env(self.project_dir)
