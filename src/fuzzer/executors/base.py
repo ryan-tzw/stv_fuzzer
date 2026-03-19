@@ -7,7 +7,7 @@ Executors run a fuzz target and return an :class:`ExecutorResult`.
 
 from abc import ABC, abstractmethod
 
-from fuzzer.executors.types import ExecutorResult
+from fuzzer.executors.executor_types import ExecutorResult
 
 
 class Executor(ABC):

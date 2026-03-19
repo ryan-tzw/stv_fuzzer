@@ -2,7 +2,7 @@
 
 from typing import List, Protocol
 
-from fuzzer.executors.types import ExecutorResult
+from fuzzer.executors.executor_types import ExecutorResult
 
 from .raw import RawProcessExecutor
 

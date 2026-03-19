@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fuzzer.executors.types import ExecutorResult
+from fuzzer.executors.executor_types import ExecutorResult
 
 from .base import (
     _RUNNER_SCRIPT,

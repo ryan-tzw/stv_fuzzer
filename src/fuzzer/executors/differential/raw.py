@@ -3,7 +3,7 @@
 from subprocess import PIPE, run
 from typing import List, Optional
 
-from fuzzer.executors.types import ExecutorResult
+from fuzzer.executors.executor_types import ExecutorResult
 
 
 class RawProcessExecutor:

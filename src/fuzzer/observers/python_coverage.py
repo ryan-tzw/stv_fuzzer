@@ -12,7 +12,7 @@ Two observer variants are provided:
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fuzzer.executors.types import RawCoverageMap
+from fuzzer.executors.executor_types import RawCoverageMap
 
 
 @dataclass
