@@ -1,0 +1,533 @@
+"""
+Json Grammar Mutation
+"""
+
+from __future__ import annotations
+
+import random
+import string
+import re
+from typing import Callable, Any
+
+from ..astBuilder import AstNode
+from .grammarOperation import (
+    GrammarOperations,
+    AstMutationOperation,
+    TokenMutationOperation,
+    ShuffleChildren,
+)
+
+
+# JSON Ast Generator Helpers
+class JsonAstGenerator:
+    """
+    Handles generation of random valid JSON AST nodes and keys.
+    Used by structural mutations that need to insert new content.
+    """
+
+    def __init__(
+        self,
+        max_new_depth: int = 1,
+        max_items: int = 3,
+        num_range: tuple[int, int] = (-9999, 9999),
+        type_weights: tuple[int, ...] = (
+            4,
+            3,
+            2,
+            1,
+            1,
+            1,
+        ),  # String, Number, Boolean, Null, Array, Object
+    ):
+        self.max_new_depth = max_new_depth
+        self.max_items = max_items
+        self.num_range = num_range
+        self.type_weights = type_weights
+        self.types = ["String", "Number", "Boolean", "Null", "Array", "Object"]
+
+    def random_identifier(
+        self, rng: random.Random, min_len: int = 3, max_len: int = 10
+    ) -> str:
+        """Generate a safe JSON key name."""
+
+        chars = string.ascii_lowercase + string.digits + "_"
+        length = rng.randint(min_len, max_len)
+        first = rng.choice(string.ascii_lowercase + "_")
+        rest = "".join(rng.choice(chars) for _ in range(length - 1))
+        return first + rest
+
+    def unique_json_key(self, existing: set[str], rng: random.Random) -> str:
+        """Guarantee a key that doesn't already exist in the object."""
+
+        while True:
+            candidate = self.random_identifier(rng, 3, 10)
+            if candidate not in existing:
+                return candidate
+
+    def random_json_string(self, rng: random.Random) -> str | None:
+        base = self.random_identifier(rng, 3, 8)
+        if rng.random() < 0.5:
+            base += rng.choice(string.ascii_letters)
+        return base
+
+    def random_json_value(self, depth: int, rng: random.Random) -> AstNode:
+        """Recursively generate a random JSON value AST node."""
+        if depth <= 0:
+            choice = rng.choice(["String", "Number", "Boolean", "Null"])
+        else:
+            choice = rng.choices(population=self.types, weights=self.type_weights, k=1)[
+                0
+            ]
+
+        if choice == "String":
+            return AstNode("String", value=self.random_json_string(rng))
+        if choice == "Number":
+            return AstNode("Number", value=str(rng.randint(*self.num_range)))
+        if choice == "Boolean":
+            return AstNode("Boolean", value=bool(rng.getrandbits(1)))
+        if choice == "Null":
+            return AstNode("Null", value=None)
+        if choice == "Array":
+            count = rng.randint(0, self.max_items)
+            return AstNode(
+                "Array",
+                children=[self.random_json_value(depth - 1, rng) for _ in range(count)],
+            )
+        if choice == "Object":
+            count = rng.randint(0, 3)
+            pairs, used = [], set()
+            for _ in range(count):
+                key = self.unique_json_key(used, rng)
+                used.add(key)
+                pairs.append(
+                    AstNode(
+                        "Pair",
+                        children=[
+                            AstNode("Key", value=key),
+                            self.random_json_value(depth - 1, rng),
+                        ],
+                    )
+                )
+            return AstNode("Object", children=pairs)
+        return AstNode("Null", value=None)
+
+
+# JSON Token Operations
+class MutateNumber(TokenMutationOperation):
+    """Mutates a numeric token string (int or float)."""
+
+    def __init__(
+        self,
+        delta_float_range: tuple[float, float] = (-100.0, 100.0),
+        delta_int_range: tuple[int, int] = (-100, 100),
+        fallback_range: tuple[int, int] = (-9999, 9999),
+    ):
+        self.delta_float_range = delta_float_range
+        self.delta_int_range = delta_int_range
+        self.fallback_range = fallback_range
+
+    def mutate(self, text: str, rng: random.Random) -> str:
+        try:
+            if any(ch in text for ch in ".eE"):
+                value = float(text)
+                delta = rng.uniform(*self.delta_float_range)
+                if abs(delta) < 1e-9:
+                    delta = 1.0
+                return format(value + delta, ".12g")
+            else:
+                value = int(text)
+                delta = rng.randint(*self.delta_int_range)
+                if delta == 0:
+                    delta = 1
+                return str(value + delta)
+        except Exception:
+            return str(rng.randint(*self.fallback_range))
+
+
+class EscapeString(TokenMutationOperation):
+    """Inject random JSON escapes into a string value."""
+
+    def __init__(self, escapes: list[str] | None = None):
+        # Default to standard JSON escapes if none provided
+        self.escapes = escapes or [
+            '\\"',
+            "\\n",
+            "\\t",
+            "\\\\",
+            "\\r",
+            "\\b",
+            "\\f",
+            "\\uFFFF",
+        ]
+
+    def mutate(self, text: str, rng: random.Random) -> str:
+        tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+        pos = rng.randrange(len(tokens) + 1)
+        tokens.insert(pos, rng.choice(self.escapes))
+        return "".join(tokens)
+
+
+# JSON Structure Operations
+class ObjectAddPair(AstMutationOperation):
+    """Add a new key/value pair to an Object."""
+
+    def __init__(self, generator: JsonAstGenerator):
+        self.gen = generator
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Object":
+            return False
+        existing = {
+            str(p.children[0].value)
+            for p in node.children
+            if p.type == "Pair" and p.children
+        }
+        key = self.gen.unique_json_key(existing, rng)
+        val = self.gen.random_json_value(self.gen.max_new_depth, rng)
+        node.children.append(AstNode("Pair", children=[AstNode("Key", value=key), val]))
+        return True
+
+
+class ObjectRemovePair(AstMutationOperation):
+    """Remove a random key/value pair from an Object."""
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Object" or not node.children:
+            return False
+        idx = rng.randrange(len(node.children))
+        del node.children[idx]
+        return True
+
+
+class ObjectDuplicatePair(AstMutationOperation):
+    """Duplicate a pair (with a fresh unique key)."""
+
+    def __init__(self, engine: Any, generator: JsonAstGenerator):
+        self.engine = engine  # Need engine for cloning AST nodes
+        self.gen = generator
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Object" or not node.children:
+            return False
+        dup = self.engine.clone(rng.choice(node.children))
+
+        # Keep keys unique so the AST stays easy to unparse.
+        existing = {
+            str(p.children[0].value)
+            for p in node.children
+            if p.type == "Pair" and p.children
+        }
+        if dup and dup.children and dup.children[0].type == "Key":
+            dup.children[0].value = self.gen.unique_json_key(existing, rng)
+
+        node.children.append(dup)
+        return True
+
+
+class ArrayAddItem(AstMutationOperation):
+    """Append a random value to an Array."""
+
+    def __init__(self, generator: JsonAstGenerator):
+        self.gen = generator
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Array":
+            return False
+        node.children.append(self.gen.random_json_value(self.gen.max_new_depth, rng))
+        return True
+
+
+class ArrayRemoveItem(AstMutationOperation):
+    """Remove a random item from an Array."""
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Array" or not node.children:
+            return False
+        idx = rng.randrange(len(node.children))
+        del node.children[idx]
+        return True
+
+
+class ArrayDuplicateItem(AstMutationOperation):
+    """Duplicate a random item in an Array."""
+
+    def __init__(self, engine: Any):
+        self.engine = engine
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Array" or not node.children:
+            return False
+        dup = self.engine.clone(rng.choice(node.children))
+        if dup:
+            node.children.append(dup)
+        return True
+
+
+class SwapScalar(AstMutationOperation):
+    """Replace a scalar value (string/number/boolean/null) with another random scalar."""
+
+    def __init__(self, generator: JsonAstGenerator):
+        self.gen = generator
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type not in {"String", "Number", "Boolean", "Null"}:
+            return False
+        choice = rng.choice(["String", "Number", "Boolean", "Null"])
+        if choice == "String":
+            node.type = "String"
+            node.value = self.gen.random_json_string(rng)
+        elif choice == "Number":
+            node.type = "Number"
+            node.value = str(rng.randint(-1000000, 1000000))
+        elif choice == "Boolean":
+            node.type = "Boolean"
+            node.value = rng.choice([True, False])
+        elif choice == "Null":
+            node.type = "Null"
+            node.value = None
+        return True
+
+
+class DeepNesting(AstMutationOperation):
+    """Wrap a random leaf in multiple Array layers (increases nesting depth)."""
+
+    def __init__(self, engine: Any, depth_range: tuple[int, int] = (2, 5)):
+        self.engine = engine
+        self.depth_range = depth_range
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        leaves = self.engine.leaf_nodes(node)
+        if not leaves:
+            return False
+        node = rng.choice(leaves)
+        depth = rng.randint(*self.depth_range)
+        for _ in range(depth):
+            node = AstNode("Array", children=[node])
+        return self.engine.replace_subtree(node, node)
+
+
+# The JSON Grammar Engine
+class JsonGrammarOperations(GrammarOperations):
+    """JSON-specific mutation engine."""
+
+    def __init__(
+        self,
+        rng_seed: int | None = None,
+        max_new_depth: int = 1,
+        inline_replace_depth: int = 2,
+    ):
+        super().__init__(rng_seed=rng_seed)
+        self.inline_replace_depth = inline_replace_depth
+        self.gen = JsonAstGenerator(max_new_depth)
+
+        # Token Operations
+        self.mutate_number = MutateNumber()
+        self.escape_string = EscapeString()
+
+        # Structure Operations
+        self.shuffle = ShuffleChildren()
+        self.obj_add = ObjectAddPair(self.gen)
+        self.obj_rm = ObjectRemovePair()
+        self.obj_dup = ObjectDuplicatePair(self, self.gen)
+        self.arr_add = ArrayAddItem(self.gen)
+        self.arr_rm = ArrayRemoveItem()
+        self.arr_dup = ArrayDuplicateItem(self)
+        self.swap_scalar = SwapScalar(self.gen)
+        self.deep_nest = DeepNesting(self)
+
+    # Structure Mutation
+    def apply_structure_mutation(self, root: AstNode) -> bool:
+        """Collect & execute one successful structural action."""
+        actions: list[Callable[[], bool]] = []
+
+        for node, _, _ in self.iter_nodes(root):
+            if node.type == "Object":
+                actions.extend(
+                    [
+                        lambda n=node: self.obj_add.mutate(n, self.rng),
+                        lambda n=node: self.obj_rm.mutate(n, self.rng),
+                        lambda n=node: self.obj_dup.mutate(n, self.rng),
+                        lambda n=node: self.shuffle.mutate(n, self.rng),
+                    ]
+                )
+            elif node.type == "Array":
+                actions.extend(
+                    [
+                        lambda n=node: self.arr_add.mutate(n, self.rng),
+                        lambda n=node: self.arr_rm.mutate(n, self.rng),
+                        lambda n=node: self.arr_dup.mutate(n, self.rng),
+                        lambda n=node: self.shuffle.mutate(n, self.rng),
+                    ]
+                )
+            elif node.type in {"String", "Number", "Boolean"}:
+                actions.append(lambda n=node: self.swap_scalar.mutate(n, self.rng))
+
+        # Global actions
+        actions.append(lambda: self.deep_nest.mutate(root, self.rng))
+        actions.append(
+            lambda: self.replace_subtree(
+                root, self.gen.random_json_value(self.inline_replace_depth, self.rng)
+            )
+        )
+
+        self.rng.shuffle(actions)
+        for action in actions:
+            if action():
+                return True
+        return False
+
+    def apply_token_mutation(self, root: AstNode) -> bool:
+        """Mutate either a Number or a String/Key."""
+        target_nodes = [
+            n
+            for n, _, _ in self.iter_nodes(root)
+            if n.type in {"String", "Key", "Number"} and n.value is not None
+        ]
+        if not target_nodes:
+            return False
+        node = self.rng.choice(target_nodes)
+        # Apply the matching token operation
+        if node.type == "Number":
+            node.value = self.mutate_number.mutate(str(node.value), self.rng)
+            return True
+        if node.type in {"String", "Key"}:
+            node.value = self.escape_string.mutate(str(node.value), self.rng)
+            return True
+        return False
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    from ..parser.parser import jsonParser
+
+    # Setup parser
+    ANTLR_DIR = (Path(__file__).parent.parent / "antlr").resolve()
+    parser = jsonParser(ANTLR_DIR)
+
+    def print_case(title, value):
+        print(f"\n{title}")
+        print("-" * 50)
+        print(value)
+
+    # Test inputs
+    json_tests = [
+        # Simple
+        '{"a": 1}',
+        '{"name": "Alice", "age": 30}',
+        "[1,2,3,4]",
+        "true",
+        "false",
+        "null",
+        # Mixed types
+        '{"a": 1, "b": true, "c": null}',
+        '{"arr": [1, "x", false]}',
+        # Nested
+        '{"nested": {"x": 1, "y": [10,20]}}',
+        '{"deep": {"a": {"b": {"c": [1,2,3]}}}}',
+        # Edge-ish
+        '{"empty_obj": {}, "empty_arr": []}',
+        '{"unicode": "hello"}',
+    ]
+
+    # Initialize operations
+    ops = JsonGrammarOperations(rng_seed=42)
+
+    print("\n=== SANITY: PARSE → UNPARSE ===")
+    for js in json_tests:
+        print_case("Input", js)
+        try:
+            ast = parser.parse(js)
+            out = parser.unparse(ast)
+            print("Unparsed:", out)
+        except Exception as e:
+            print("FAILED:", e)
+
+    print("\n=== TOKEN MUTATION TESTS ===")
+    for js in json_tests:
+        print_case("Original", js)
+        try:
+            ast = parser.parse(js)
+
+            mutated = ops.clone(ast)
+            success = ops.apply_token_mutation(mutated)
+
+            print("Mutation applied:", success)
+            out = parser.unparse(mutated)
+            print("Mutated:", out)
+
+            # Re-parse validation
+            try:
+                parser.parse(out)
+                print("Re-parse: OK")
+            except Exception:
+                print("Re-parse: FAILED")
+
+        except Exception as e:
+            print("FAILED:", e)
+
+    print("\n=== STRUCTURE MUTATION TESTS ===")
+    for js in json_tests:
+        print_case("Original", js)
+        try:
+            ast = parser.parse(js)
+
+            mutated = ops.clone(ast)
+            success = ops.apply_structure_mutation(mutated)
+
+            print("Mutation applied:", success)
+            out = parser.unparse(mutated)
+            print("Mutated:", out)
+
+            # Re-parse validation
+            try:
+                parser.parse(out)
+                print("Re-parse: OK")
+            except Exception:
+                print("Re-parse: FAILED (expected sometimes)")
+
+        except Exception as e:
+            print("FAILED:", e)
+
+    print("\n=== FULL MUTATION (mutate) ===")
+    for js in json_tests:
+        print_case("Seed Input", js)
+        try:
+            ast = parser.parse(js)
+
+            for i in range(5):
+                ast = ops.mutate(ast, structure_bias=0.5)
+                out = parser.unparse(ast)
+
+                print(f"\nIteration {i + 1}: {out}")
+
+                # Validate
+                try:
+                    parser.parse(out)
+                    print("Re-parse: OK")
+                except Exception:
+                    print("Re-parse: FAILED (interesting case!)")
+
+        except Exception as e:
+            print("FAILED:", e)
+
+    print("\n=== STRESS TEST (FUZZ LOOP) ===")
+    base = r'{"a": true, "b": [1,2,3, null], "c": {"d" : null}}'
+
+    try:
+        ast = parser.parse(base)
+
+        for i in range(50):
+            ast = ops.mutate(ast)
+            out = parser.unparse(ast)
+
+            print(f"{i:02d}: {out}")
+
+            try:
+                parser.parse(out)
+            except Exception:
+                print("  -> Invalid after mutation (EXPECTED edge case)")
+
+    except Exception as e:
+        print("FAILED:", e)
+
+    print("\n=== ALL TESTS DONE ===")
