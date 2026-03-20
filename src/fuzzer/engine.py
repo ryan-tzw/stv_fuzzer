@@ -136,6 +136,7 @@ class FuzzingEngine:
                         exec_result = self.executor.run(mutated)
                         if exec_result.is_diff:
                             self.logger.record_differential(exec_result.diff_kind)
+                            self.db.record_differential(exec_result.diff_kind)
                         self.corpus.record_fuzzed(seed)
 
                         signal = self.observer.observe(exec_result.raw_coverage)

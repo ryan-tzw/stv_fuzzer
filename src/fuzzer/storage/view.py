@@ -76,6 +76,23 @@ def show_crashes(
         print()
 
 
+def show_differential_breakdown(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        "SELECT kind, count, first_seen_at, last_seen_at FROM differential ORDER BY count DESC"
+    ).fetchall()
+
+    print(f"=== Differential breakdown ({len(rows)} kinds) ===")
+    if not rows:
+        print("  (none)")
+        print()
+        return
+
+    for row in rows:
+        print(f"  {row['kind']}: {row['count']}")
+        print(f"         first={row['first_seen_at']}  last={row['last_seen_at']}")
+    print()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="View fuzzer results database")
     parser.add_argument("db_path", type=Path, help="Path to the results.db file")
@@ -95,6 +112,11 @@ def main() -> int:
         action="store_true",
         help="Show everything (corpus + crashes + data + tracebacks)",
     )
+    parser.add_argument(
+        "--show-diff-breakdown",
+        action="store_true",
+        help="Show differential mismatch breakdown persisted in the database",
+    )
     args = parser.parse_args()
 
     conn = _conn(args.db_path)
@@ -102,11 +124,12 @@ def main() -> int:
     show_all = args.show_all
     display_corpus = args.corpus or show_all
     display_crashes = args.crashes or show_all
+    display_diff = args.show_diff_breakdown or show_all
     show_data = args.data or show_all
     show_tb = args.traceback or show_all
 
     # Default: show summary + crashes if no specific section requested
-    if not display_corpus and not display_crashes:
+    if not display_corpus and not display_crashes and not display_diff:
         show_summary(conn)
         show_crashes(conn, show_traceback=show_tb, show_data=show_data)
     else:
@@ -115,6 +138,8 @@ def main() -> int:
             show_corpus(conn, show_data=show_data)
         if display_crashes:
             show_crashes(conn, show_traceback=show_tb, show_data=show_data)
+        if display_diff:
+            show_differential_breakdown(conn)
 
     conn.close()
     return 0

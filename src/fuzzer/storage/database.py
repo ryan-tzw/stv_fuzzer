@@ -47,6 +47,13 @@ class FuzzerDatabase:
 
             CREATE UNIQUE INDEX IF NOT EXISTS crashes_dedup
                 ON crashes (exception_type, file, line);
+
+            CREATE TABLE IF NOT EXISTS differential (
+                kind            TEXT PRIMARY KEY,
+                count           INTEGER NOT NULL DEFAULT 0,
+                first_seen_at   TEXT NOT NULL,
+                last_seen_at    TEXT NOT NULL
+            );
         """)
         self._conn.commit()
 
@@ -101,6 +108,34 @@ class FuzzerDatabase:
     # ------------------------------------------------------------------
     # Crashes
     # ------------------------------------------------------------------
+
+    def record_differential(self, kind: str | None) -> None:
+        """Record one differential mismatch hit, grouped by kind."""
+        kind_key = kind or "(unspecified)"
+        now = _now()
+
+        existing = self._conn.execute(
+            "SELECT kind FROM differential WHERE kind = ?",
+            (kind_key,),
+        ).fetchone()
+
+        if existing:
+            self._conn.execute(
+                "UPDATE differential SET count = count + 1, last_seen_at = ? WHERE kind = ?",
+                (now, kind_key),
+            )
+        else:
+            self._conn.execute(
+                "INSERT INTO differential (kind, count, first_seen_at, last_seen_at) VALUES (?, 1, ?, ?)",
+                (kind_key, now, now),
+            )
+        self._conn.commit()
+
+    def get_differential_breakdown(self) -> list[sqlite3.Row]:
+        """Return differential counts grouped by kind (highest count first)."""
+        return self._conn.execute(
+            "SELECT kind, count, first_seen_at, last_seen_at FROM differential ORDER BY count DESC"
+        ).fetchall()
 
     @staticmethod
     def parse_crash(stderr: str) -> dict:
