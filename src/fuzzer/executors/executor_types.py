@@ -16,11 +16,7 @@ class RawCoverageFile(TypedDict, total=False):
 RawCoverageMap: TypeAlias = dict[str, RawCoverageFile]
 
 DiffKind: TypeAlias = Literal[
-    "stdout_mismatch",
-    "stderr_mismatch",
-    "return_code_mismatch",
-    "blackbox_nonzero",
-    "reference_nonzero",
+    "outcome_mismatch",
     "executor_failure",
 ]
 

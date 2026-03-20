@@ -145,15 +145,6 @@ class FuzzerLogger:
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
 
-        if self._diff_counts:
-            self._console.print("\n[bold]Differential breakdown[/bold]")
-            breakdown = Table.grid(padding=(0, 2))
-            breakdown.add_column(style="bold")
-            breakdown.add_column(style="cyan", justify="right")
-            for kind, count in self._diff_counts.most_common():
-                breakdown.add_row(kind, str(count))
-            self._console.print(breakdown)
-
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

@@ -19,6 +19,10 @@ class DifferentialExecutor:
     *black_cmd* is executed with :class:`RawProcessExecutor`.
     *ref_executor* should be an executor returning :class:`ExecutorResult`
     (e.g. a coverage executor).
+
+    Differential decisions are outcome-based only:
+    success (return_code == 0) versus failure (return_code != 0).
+    Raw stdout/stderr are still preserved in the returned result for debugging.
     """
 
     def __init__(
@@ -44,16 +48,11 @@ class DifferentialExecutor:
         diff_kind = None
         if black.diff_kind == "executor_failure" or ref.diff_kind == "executor_failure":
             diff_kind = "executor_failure"
-        elif black.stdout != ref.stdout:
-            diff_kind = "stdout_mismatch"
-        elif black.stderr != ref.stderr:
-            diff_kind = "stderr_mismatch"
-        elif black.return_code != ref.return_code:
-            diff_kind = "return_code_mismatch"
-        elif black.return_code != 0:
-            diff_kind = "blackbox_nonzero"
-        elif ref.return_code != 0:
-            diff_kind = "reference_nonzero"
+        else:
+            black_ok = black.return_code == 0
+            ref_ok = ref.return_code == 0
+            if black_ok != ref_ok:
+                diff_kind = "outcome_mismatch"
 
         return ExecutorResult(
             stdout=black.stdout,
