@@ -1,3 +1,4 @@
-from .coverage import CoverageFeedback, FeedbackResult
+from .coverage import CoverageFeedback
+from .crash import CrashDetector, StderrPrefixCrashDetector
 
-__all__ = ["CoverageFeedback", "FeedbackResult"]
+__all__ = ["CoverageFeedback", "CrashDetector", "StderrPrefixCrashDetector"]

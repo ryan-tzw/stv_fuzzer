@@ -9,7 +9,7 @@ from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import PersistentCoverageExecutor
-from fuzzer.feedback import CoverageFeedback
+from fuzzer.feedback import CoverageFeedback, StderrPrefixCrashDetector
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers.python_coverage import (
     InProcessCoverageObserver,
@@ -35,6 +35,7 @@ class FuzzingEngine:
         )
         self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
+        self.crash_detector = StderrPrefixCrashDetector()
         self.logger = FuzzerLogger(self.run_dir, config)
 
     def _build_scheduler(self) -> Scheduler:
@@ -89,9 +90,10 @@ class FuzzingEngine:
                         self.corpus.record_fuzzed(seed)
 
                         signal = self.observer.observe(coverage_file)
-                        result = self.feedback.evaluate(signal, stderr)
+                        add_to_corpus = self.feedback.evaluate(signal)
+                        is_crash = self.crash_detector.is_crash(stderr=stderr)
 
-                        if result.is_crash:
+                        if is_crash:
                             is_new = self.db.record_crash(mutated, stderr)
                             if is_new:
                                 unique_crashes += 1
@@ -99,7 +101,7 @@ class FuzzingEngine:
                             else:
                                 self.logger.log_duplicate_crash(iteration)
 
-                        if result.add_to_corpus:
+                        if add_to_corpus:
                             self.corpus.add(mutated)
                             self.logger.log_corpus_add(iteration)
 

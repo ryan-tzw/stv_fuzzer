@@ -1,20 +1,9 @@
 """
 Coverage feedback: takes normalised coverage signals from the observer
-and decides whether an input should be added to the corpus or recorded
-as a crash.
+and decides whether an input should be added to the corpus.
 """
 
-from dataclasses import dataclass
-
 from fuzzer.observers.python_coverage import CoverageData
-
-
-@dataclass
-class FeedbackResult:
-    """Decision produced by CoverageFeedback for a single execution."""
-
-    add_to_corpus: bool
-    is_crash: bool
 
 
 class CoverageFeedback:
@@ -23,35 +12,28 @@ class CoverageFeedback:
 
     Responsibilities:
     - Track which lines/branches have been seen globally.
-    - Given a CoverageData signal and raw stderr, decide whether the
-      input is interesting (new coverage) and/or a crash.
+        - Given a CoverageData signal, decide whether the input is interesting
+            (new coverage).
     """
 
     def __init__(self) -> None:
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_branches: set[tuple[str, tuple[int, int]]] = set()
 
-    def evaluate(self, signal: CoverageData, stderr: str = "") -> FeedbackResult:
+    def evaluate(self, signal: CoverageData) -> bool:
         """
-        Evaluate an execution's signals and return a decision.
+        Evaluate coverage and return whether this input should enter the corpus.
 
         Args:
             signal:  Normalised coverage data produced by the observer.
-            stderr:  Raw stderr output from the executor (used for crash detection).
 
         Returns:
-            FeedbackResult indicating whether to add to corpus and/or record a crash.
+            True if this execution contributes new coverage, False otherwise.
         """
-        is_crash = "ERR:" in stderr
-
         is_new_coverage = self._has_new_coverage(signal)
         if is_new_coverage:
             self._update_seen(signal)
-
-        return FeedbackResult(
-            add_to_corpus=is_new_coverage,
-            is_crash=is_crash,
-        )
+        return is_new_coverage
 
     def _has_new_coverage(self, signal: CoverageData) -> bool:
         """Return True if signal contains any lines or branches not seen before."""
