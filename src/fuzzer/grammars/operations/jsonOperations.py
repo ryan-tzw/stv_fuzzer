@@ -157,7 +157,6 @@ class EscapeString(TokenMutationOperation):
             "\\r",
             "\\b",
             "\\f",
-            "\\uFFFF",
         ]
 
     def mutate(self, text: str, rng: random.Random) -> str:
@@ -296,14 +295,20 @@ class DeepNesting(AstMutationOperation):
         self.depth_range = depth_range
 
     def mutate(self, node: AstNode, rng: random.Random) -> bool:
-        leaves = self.engine.leaf_nodes(node)
+        leaves = [
+            (n, p, i)
+            for n, p, i in self.engine.iter_nodes(node)
+            if p is not None and n.type in {"String", "Number", "Boolean", "Null"}
+        ]
         if not leaves:
             return False
-        node = rng.choice(leaves)
+        target_node, parent, index = rng.choice(leaves)
         depth = rng.randint(*self.depth_range)
+        new_subtree = self.engine.clone(target_node)
         for _ in range(depth):
-            node = AstNode("Array", children=[node])
-        return self.engine.replace_subtree(node, node)
+            new_subtree = AstNode("Array", children=[new_subtree])
+        parent.children[index] = new_subtree
+        return True
 
 
 # The JSON Grammar Engine
@@ -335,6 +340,22 @@ class JsonGrammarOperations(GrammarOperations):
         self.swap_scalar = SwapScalar(self.gen)
         self.deep_nest = DeepNesting(self)
 
+    def _safe_replace_value(self, root: AstNode) -> bool:
+        """Safely replace a JSON value node with a new random JSON value."""
+        valid_types = {"String", "Number", "Boolean", "Null", "Array", "Object"}
+        nodes = [
+            (n, p, i)
+            for n, p, i in self.iter_nodes(root)
+            if p is not None and i is not None and n.type in valid_types
+        ]
+        if not nodes:
+            return False
+        node, parent, index = self._weighted_choice(nodes)
+        parent.children[index] = self.gen.random_json_value(
+            self.inline_replace_depth, self.rng
+        )
+        return True
+
     # Structure Mutation
     def apply_structure_mutation(self, root: AstNode) -> bool:
         """Collect & execute one successful structural action."""
@@ -364,11 +385,7 @@ class JsonGrammarOperations(GrammarOperations):
 
         # Global actions
         actions.append(lambda: self.deep_nest.mutate(root, self.rng))
-        actions.append(
-            lambda: self.replace_subtree(
-                root, self.gen.random_json_value(self.inline_replace_depth, self.rng)
-            )
-        )
+        actions.append(lambda: self._safe_replace_value(root))
 
         self.rng.shuffle(actions)
         for action in actions:
