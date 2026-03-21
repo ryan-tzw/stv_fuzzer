@@ -8,12 +8,6 @@ from .base import (
 from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
-from .base import (
-    prepare_env as _prepare_env,
-)
-from .base import (
-    uv_base_cmd as _uv_base_cmd,
-)
 
 
 class InProcessCoverageExecutor(_CoverageExecutorBase):
@@ -29,13 +23,15 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
 
     def run(self, input_data: str | None = None) -> tuple[str, str, int, dict]:
         """Return ``(stdout, stderr, exit_code, coverage_dict)``."""
-        env = _prepare_env(self.project_dir)
+        env = self._prepare_env()
 
-        cmd = _uv_base_cmd(self.project_dir) + [
-            str(_RUNNER_SCRIPT),
-            str(self.script_path),
-            *self.script_args,
-        ]
+        cmd = self._build_uv_cmd(
+            [
+                str(_RUNNER_SCRIPT),
+                str(self.script_path),
+                *self.script_args,
+            ]
+        )
 
         result = subprocess.run(
             cmd,

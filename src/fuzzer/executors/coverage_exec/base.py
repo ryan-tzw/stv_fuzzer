@@ -58,5 +58,11 @@ class CoverageExecutorBase:
             for a in (script_args or [])
         ]
 
+    def _prepare_env(self) -> dict[str, str]:
+        return prepare_env(self.project_dir)
+
+    def _build_uv_cmd(self, extra_args: list[str]) -> list[str]:
+        return uv_base_cmd(self.project_dir) + extra_args
+
 
 __all__ = ["prepare_env", "uv_base_cmd", "CoverageExecutorBase", "_RUNNER_SCRIPT"]

@@ -6,12 +6,6 @@ from .base import (
 from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
-from .base import (
-    prepare_env as _prepare_env,
-)
-from .base import (
-    uv_base_cmd as _uv_base_cmd,
-)
 
 
 class PersistentCoverageExecutor(_CoverageExecutorBase):
@@ -28,14 +22,16 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
 
         super().__init__(project_dir, script_path, script_args)
 
-        env = _prepare_env(self.project_dir)
+        env = self._prepare_env()
 
-        cmd = _uv_base_cmd(self.project_dir) + [
-            str(_RUNNER_SCRIPT),
-            "--loop",
-            str(self.script_path),
-            *self.script_args,
-        ]
+        cmd = self._build_uv_cmd(
+            [
+                str(_RUNNER_SCRIPT),
+                "--loop",
+                str(self.script_path),
+                *self.script_args,
+            ]
+        )
 
         self._worker = WorkerProcess(
             cmd=cmd,

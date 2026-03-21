@@ -25,13 +25,22 @@ class CoverageData:
         return sum(len(v) for v in self.branches.values())
 
 
-class PythonCoverageObserver:
+class _ProjectScopedCoverageObserver:
     def __init__(self, project_dir: str | Path):
-        """
-        project_dir: root of the target project — only files within this
-        directory will be included in the coverage data.
-        """
         self.project_dir = Path(project_dir).resolve()
+
+    def _scoped_key(self, file_path: str | Path) -> str | None:
+        resolved = Path(file_path).resolve()
+        try:
+            return str(resolved.relative_to(self.project_dir))
+        except ValueError:
+            return None
+
+
+class PythonCoverageObserver(_ProjectScopedCoverageObserver):
+    """
+    Read a ``.coverage`` file from disk and produce project-scoped coverage.
+    """
 
     def observe(self, coverage_file: Path, cleanup: bool = True) -> CoverageData:
         """
@@ -47,13 +56,10 @@ class PythonCoverageObserver:
         result = CoverageData()
 
         for file_path in data.measured_files():
-            resolved = Path(file_path).resolve()
-            try:
-                resolved.relative_to(self.project_dir)
-            except ValueError:
+            key = self._scoped_key(file_path)
+            if key is None:
                 continue  # outside project_dir — skip
 
-            key = str(resolved.relative_to(self.project_dir))
             lines = data.lines(file_path)
             arcs = data.arcs(file_path)
 
@@ -71,7 +77,7 @@ class PythonCoverageObserver:
 # --------------------------------------------------------------------------- #
 
 
-class InProcessCoverageObserver:
+class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
     """
     Derive :class:`CoverageData` from the coverage dict produced by
     :class:`~fuzzer.executors.coverage.python.InProcessCoverageExecutor`.
@@ -90,9 +96,6 @@ class InProcessCoverageObserver:
     the behaviour of :class:`PythonCoverageObserver`.
     """
 
-    def __init__(self, project_dir: str | Path):
-        self.project_dir = Path(project_dir).resolve()
-
     def observe(self, coverage_dict: dict) -> CoverageData:
         """
         Parse *coverage_dict* and return coverage scoped to *project_dir*.
@@ -100,13 +103,10 @@ class InProcessCoverageObserver:
         result = CoverageData()
 
         for file_path, file_data in coverage_dict.items():
-            resolved = Path(file_path).resolve()
-            try:
-                resolved.relative_to(self.project_dir)
-            except ValueError:
+            key = self._scoped_key(file_path)
+            if key is None:
                 continue  # outside project_dir — skip
 
-            key = str(resolved.relative_to(self.project_dir))
             lines = file_data.get("lines") or []
             arcs = file_data.get("arcs") or []
 

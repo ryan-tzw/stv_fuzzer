@@ -6,12 +6,6 @@ from pathlib import Path
 from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
-from .base import (
-    prepare_env as _prepare_env,
-)
-from .base import (
-    uv_base_cmd as _uv_base_cmd,
-)
 
 
 class PythonCoverageExecutor(_CoverageExecutorBase):
@@ -31,18 +25,20 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
         os.close(fd)
         coverage_file = Path(coverage_path)
 
-        env = _prepare_env(self.project_dir)
+        env = self._prepare_env()
 
-        cmd = _uv_base_cmd(self.project_dir) + [
-            "-m",
-            "coverage",
-            "run",
-            "--branch",
-            "--data-file",
-            str(coverage_file),
-            str(self.script_path),
-            *self.script_args,
-        ]
+        cmd = self._build_uv_cmd(
+            [
+                "-m",
+                "coverage",
+                "run",
+                "--branch",
+                "--data-file",
+                str(coverage_file),
+                str(self.script_path),
+                *self.script_args,
+            ]
+        )
 
         result = subprocess.run(
             cmd,
