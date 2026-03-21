@@ -34,6 +34,30 @@ class FuzzingEngine:
         self.crash_detector = runtime_components.crash_detector
         self.logger = FuzzerLogger(self.run_dir, config)
 
+    def start(self) -> None:
+        """Prepare engine resources, such as persistent executor startup."""
+        try:
+            self.executor.start()
+        except AttributeError:
+            pass
+
+    def stop(self) -> None:
+        """Clean up resources and persist current corpus state."""
+        try:
+            self.executor.stop()
+        except AttributeError:
+            pass
+
+        self.db.flush_corpus(self.corpus.seeds())
+        self.db.close()
+
+    def __enter__(self) -> "FuzzingEngine":
+        self.start()
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.stop()
+
     def _stop_reason(self, iteration: int, start_time: float) -> str | None:
         max_iterations = self.config.max_iterations
         if max_iterations is not None and iteration >= max_iterations:
@@ -95,6 +119,7 @@ class FuzzingEngine:
             self.logger.start(corpus_size=len(self.corpus.seeds()))
 
             try:
+                self.start()
                 while True:
                     stop_reason = self._stop_reason(iteration, start_time)
                     if stop_reason is not None:
@@ -110,8 +135,7 @@ class FuzzingEngine:
                 self.logger.log_stop_reason("interrupted by user")
 
             finally:
-                self.db.flush_corpus(self.corpus.seeds())
-                self.db.close()
+                self.stop()
 
         elapsed = time.monotonic() - start_time
         self.logger.print_summary(iteration, elapsed)
