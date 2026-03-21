@@ -21,10 +21,11 @@ def main() -> None:
     executor = PythonCoverageExecutor(
         args.project_dir, args.script_path, args.script_args
     )
-    stdout, stderr, coverage_file = executor.run()
+    stdout, stderr, exit_code, coverage_file = executor.run()
 
     print("STDOUT:", stdout)
     print("STDERR:", stderr)
+    print("Exit code:", exit_code)
     print("Coverage file:", coverage_file)
 
 

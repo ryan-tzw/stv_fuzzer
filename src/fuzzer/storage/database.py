@@ -105,10 +105,10 @@ class FuzzerDatabase:
     @staticmethod
     def parse_crash(stderr: str) -> dict:
         """
-        Parse the ERR: traceback written by the harness into structured fields.
+        Parse traceback text from stderr into structured fields.
         Returns a dict with keys: exception_type, exception_message, file, line, traceback.
         """
-        # Strip leading "ERR:"
+        # Strip legacy leading "ERR:" marker if present.
         tb_text = stderr.strip()
         if tb_text.startswith("ERR:"):
             tb_text = tb_text[4:]

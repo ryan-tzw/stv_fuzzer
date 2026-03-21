@@ -25,8 +25,8 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, Path]:
-        """Execute once; return ``(stdout, stderr, coverage_path)``."""
+    def run(self, input_data: str | None = None) -> tuple[str, str, int, Path]:
+        """Execute once; return ``(stdout, stderr, exit_code, coverage_path)``."""
         fd, coverage_path = tempfile.mkstemp(suffix=".coverage")
         os.close(fd)
         coverage_file = Path(coverage_path)
@@ -54,4 +54,4 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
             input=input_data,
         )
 
-        return result.stdout, result.stderr, coverage_file
+        return result.stdout, result.stderr, result.returncode, coverage_file

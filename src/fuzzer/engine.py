@@ -9,7 +9,7 @@ from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import PersistentCoverageExecutor
-from fuzzer.feedback import CoverageFeedback, StderrPrefixCrashDetector
+from fuzzer.feedback import CoverageFeedback, ExitCodeCrashDetector
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers.python_coverage import (
     InProcessCoverageObserver,
@@ -35,7 +35,7 @@ class FuzzingEngine:
         )
         self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
-        self.crash_detector = StderrPrefixCrashDetector()
+        self.crash_detector = ExitCodeCrashDetector()
         self.logger = FuzzerLogger(self.run_dir, config)
 
     def _build_scheduler(self) -> Scheduler:
@@ -86,12 +86,17 @@ class FuzzingEngine:
                     for _ in range(energy):
                         mutated = self.mutator.mutate(seed.data)
 
-                        stdout, stderr, coverage_file = self.executor.run(mutated)
+                        stdout, stderr, exit_code, coverage_file = self.executor.run(
+                            mutated
+                        )
                         self.corpus.record_fuzzed(seed)
 
                         signal = self.observer.observe(coverage_file)
                         add_to_corpus = self.feedback.evaluate(signal)
-                        is_crash = self.crash_detector.is_crash(stderr=stderr)
+                        is_crash = self.crash_detector.is_crash(
+                            exit_code=exit_code,
+                            stderr=stderr,
+                        )
 
                         if is_crash:
                             is_new = self.db.record_crash(mutated, stderr)

@@ -52,16 +52,17 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
         """Terminate the worker."""
         self._worker.stop()
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
-        """Execute via worker and return ``(stdout, stderr, coverage)``."""
+    def run(self, input_data: str | None = None) -> tuple[str, str, int, dict]:
+        """Execute via worker and return ``(stdout, stderr, exit_code, coverage)``."""
         payload = self._worker.send({"input": input_data})
 
         if "_worker_error" in payload:
-            return "", payload.get("_stderr", ""), {}
+            return "", payload.get("_stderr", ""), 1, {}
 
         return (
             payload.get("stdout", ""),
             payload.get("stderr", ""),
+            int(payload.get("exit_code", 0)),
             payload.get("coverage", {}),
         )
 

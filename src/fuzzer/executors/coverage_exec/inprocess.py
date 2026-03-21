@@ -27,8 +27,8 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, dict]:
-        """Return ``(stdout, stderr, coverage_dict)``."""
+    def run(self, input_data: str | None = None) -> tuple[str, str, int, dict]:
+        """Return ``(stdout, stderr, exit_code, coverage_dict)``."""
         env = _prepare_env(self.project_dir)
 
         cmd = _uv_base_cmd(self.project_dir) + [
@@ -51,10 +51,11 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
             payload = json.loads(result.stdout)
         except json.JSONDecodeError:
             # Runner itself crashed before producing JSON; surface raw output.
-            return result.stdout, result.stderr, {}
+            return result.stdout, result.stderr, result.returncode, {}
 
         return (
             payload.get("stdout", ""),
             payload.get("stderr", ""),
+            int(payload.get("exit_code", result.returncode)),
             payload.get("coverage", {}),
         )

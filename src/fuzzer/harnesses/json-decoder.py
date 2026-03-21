@@ -37,7 +37,7 @@ def main() -> int:
         return 0
 
     except Exception:
-        sys.stderr.write(f"ERR:{traceback.format_exc()}\n")
+        sys.stderr.write(traceback.format_exc())
         return 1
 
 
