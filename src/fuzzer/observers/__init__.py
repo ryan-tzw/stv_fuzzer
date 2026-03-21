@@ -1,3 +1,14 @@
-from .python_coverage import CoverageData, PythonCoverageObserver
+from .differential import DifferentialObserver, DifferentialSignal
+from .python_coverage import (
+    CoverageData,
+    InProcessCoverageObserver,
+    PythonCoverageObserver,
+)
 
-__all__ = ["PythonCoverageObserver", "CoverageData"]
+__all__ = [
+    "CoverageData",
+    "DifferentialObserver",
+    "DifferentialSignal",
+    "InProcessCoverageObserver",
+    "PythonCoverageObserver",
+]
