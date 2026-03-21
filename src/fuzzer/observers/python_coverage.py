@@ -6,7 +6,7 @@ Two observer variants are provided:
 
 * PythonCoverageObserver     – reads a ``.coverage`` file from disk.
 * InProcessCoverageObserver  – parses the in-memory coverage dict returned
-  by :class:`~fuzzer.executors.coverage_exec.python.InProcessCoverageExecutor`.
+    by the in-process runner used by the persistent coverage executor.
 """
 
 from dataclasses import dataclass, field
@@ -82,7 +82,7 @@ class PythonCoverageObserver(_ProjectScopedCoverageObserver):
 class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
     """
     Derive :class:`CoverageData` from the coverage dict produced by
-    :class:`~fuzzer.executors.coverage.python.InProcessCoverageExecutor`.
+    the persistent coverage execution pipeline.
 
     The dict has the shape::
 
@@ -113,42 +113,8 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
             arcs = file_data.get("arcs") or []
 
             result.lines[key] = frozenset(lines)
-            result.branches[key] = frozenset(tuple(a) for a in arcs)
+            result.branches[key] = frozenset(
+                (arc[0], arc[1]) for arc in arcs if len(arc) == 2
+            )
 
         return result
-
-
-if __name__ == "__main__":
-    import argparse
-
-    from fuzzer.executors.coverage_exec.python import PythonCoverageExecutor
-
-    parser = argparse.ArgumentParser(description="Run a harness and observe coverage")
-    parser.add_argument("project_dir", help="Path to the target's uv project directory")
-    parser.add_argument("script_path", help="Path to the harness script to run")
-    parser.add_argument(
-        "script_args", nargs=argparse.REMAINDER, help="Arguments to pass to the harness"
-    )
-    args = parser.parse_args()
-
-    executor = PythonCoverageExecutor(
-        args.project_dir, args.script_path, args.script_args
-    )
-    run_result = executor.run()
-
-    print("STDOUT:", run_result.stdout)
-    print("Exit code:", run_result.exit_code)
-    if run_result.stderr:
-        print("STDERR:", run_result.stderr)
-
-    observer = PythonCoverageObserver(args.project_dir)
-    data = observer.observe(run_result.result)
-
-    print(f"\nCoverage ({data.total_lines()} lines, {data.total_branches()} branches):")
-    for file, lines in data.lines.items():
-        branches = data.branches.get(file, frozenset())
-        sorted_lines = sorted(lines)
-        sorted_branches = sorted(branches)
-        print(f"  {file}: {len(lines)} lines, {len(branches)} branches")
-        print(f"    lines:    {sorted_lines}")
-        print(f"    branches: {sorted_branches}")

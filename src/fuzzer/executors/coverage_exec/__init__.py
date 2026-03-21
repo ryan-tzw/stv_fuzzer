@@ -1,20 +1,11 @@
 """Coverage-specific executor implementations.
 
-This subpackage contains everything required to run a harness under
-coverage.py: helper routines, the three executor classes, and a small
-command-line shim used for manual experimentation.  The names inside this
-package do **not** include the word "coverage" since the package itself
-already provides that context.
+This subpackage contains runtime coverage execution support.
+The persistent executor is the primary production path.
 """
 
-from .cli import main as coverage_cli_main
-from .file_executor import PythonCoverageExecutor
-from .inprocess import InProcessCoverageExecutor
 from .persistent import PersistentCoverageExecutor
 
 __all__ = [
-    "PythonCoverageExecutor",
-    "InProcessCoverageExecutor",
     "PersistentCoverageExecutor",
-    "coverage_cli_main",
 ]
