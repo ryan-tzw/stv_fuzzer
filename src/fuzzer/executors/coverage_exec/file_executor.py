@@ -3,6 +3,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from fuzzer.executors.base import ExecutionResult
+
 from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
@@ -19,8 +21,8 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, int, Path]:
-        """Execute once; return ``(stdout, stderr, exit_code, coverage_path)``."""
+    def run(self, input_data: str | None = None) -> ExecutionResult[Path]:
+        """Execute once; return stdout/stderr/exit code and coverage file path."""
         fd, coverage_path = tempfile.mkstemp(suffix=".coverage")
         os.close(fd)
         coverage_file = Path(coverage_path)
@@ -50,4 +52,9 @@ class PythonCoverageExecutor(_CoverageExecutorBase):
             input=input_data,
         )
 
-        return result.stdout, result.stderr, result.returncode, coverage_file
+        return ExecutionResult(
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit_code=result.returncode,
+            result=coverage_file,
+        )

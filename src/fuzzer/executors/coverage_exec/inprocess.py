@@ -2,6 +2,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from fuzzer.executors.base import ExecutionResult
+
 from .base import (
     _RUNNER_SCRIPT,
 )
@@ -21,8 +23,8 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
-    def run(self, input_data: str | None = None) -> tuple[str, str, int, dict]:
-        """Return ``(stdout, stderr, exit_code, coverage_dict)``."""
+    def run(self, input_data: str | None = None) -> ExecutionResult[dict]:
+        """Return stdout/stderr/exit code and in-memory coverage dict."""
         env = self._prepare_env()
 
         cmd = self._build_uv_cmd(
@@ -47,11 +49,16 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
             payload = json.loads(result.stdout)
         except json.JSONDecodeError:
             # Runner itself crashed before producing JSON; surface raw output.
-            return result.stdout, result.stderr, result.returncode, {}
+            return ExecutionResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.returncode,
+                result={},
+            )
 
-        return (
-            payload.get("stdout", ""),
-            payload.get("stderr", ""),
-            int(payload.get("exit_code", result.returncode)),
-            payload.get("coverage", {}),
+        return ExecutionResult(
+            stdout=payload.get("stdout", ""),
+            stderr=payload.get("stderr", ""),
+            exit_code=int(payload.get("exit_code", result.returncode)),
+            result=payload.get("coverage", {}),
         )

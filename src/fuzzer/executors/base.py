@@ -1,32 +1,42 @@
 """
 Base executor interface.
 
-Executors run a fuzz target and return ``(stdout, stderr, exit_code, result)``;
-the result is generic (coverage, path, diff, etc.).  ``start``/``stop`` are
-optional hooks for persistent implementations.
+Executors run a fuzz target and return :class:`ExecutionResult`; ``result`` is
+generic (coverage, path, diff, etc.). ``start``/``stop`` are optional hooks
+for persistent implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
+
+_ResultT = TypeVar("_ResultT")
+
+
+@dataclass(frozen=True)
+class ExecutionResult(Generic[_ResultT]):
+    """Result of one executor invocation."""
+
+    stdout: str
+    stderr: str
+    exit_code: int
+    result: _ResultT
 
 
 class Executor(ABC):
     """Abstract base class for fuzzing executors.
 
-    The engine expects ``run`` to return a four-element tuple ``(stdout,
-    stderr, exit_code, result)``.  ``result`` may be a coverage dictionary,
-    a file path, a boolean diff indicator, or anything else that makes sense
-    for the concrete executor.
+    The engine expects ``run`` to return :class:`ExecutionResult`. ``result``
+    may be a coverage dictionary, a file path, a boolean diff indicator, or
+    anything else that makes sense for the concrete executor.
 
     Executors that need to perform setup/teardown (persistent workers,
     networked proxies, etc.) may override :meth:`start` and :meth:`stop`.
     """
 
     @abstractmethod
-    def run(self, input_data: str | None = None) -> Tuple[str, str, int, Any]:
-        """Execute the target with *input_data* and return ``(stdout, stderr,
-        exit_code, result)``.
-        """
+    def run(self, input_data: str | None = None) -> ExecutionResult[Any]:
+        """Execute the target with *input_data* and return an ExecutionResult."""
         ...
 
     # ``start``/``stop`` are optional hooks; the default implementations are

@@ -132,15 +132,15 @@ if __name__ == "__main__":
     executor = PythonCoverageExecutor(
         args.project_dir, args.script_path, args.script_args
     )
-    stdout, stderr, exit_code, coverage_file = executor.run()
+    run_result = executor.run()
 
-    print("STDOUT:", stdout)
-    print("Exit code:", exit_code)
-    if stderr:
-        print("STDERR:", stderr)
+    print("STDOUT:", run_result.stdout)
+    print("Exit code:", run_result.exit_code)
+    if run_result.stderr:
+        print("STDERR:", run_result.stderr)
 
     observer = PythonCoverageObserver(args.project_dir)
-    data = observer.observe(coverage_file)
+    data = observer.observe(run_result.result)
 
     print(f"\nCoverage ({data.total_lines()} lines, {data.total_branches()} branches):")
     for file, lines in data.lines.items():
