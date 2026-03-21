@@ -48,16 +48,19 @@ class WorkerProcess:
         """Launch the worker subprocess (no-op if already alive)."""
         if self.is_alive():
             return
-        self._proc = subprocess.Popen(
-            self._cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=self._env,
-            cwd=self._cwd,
-            text=True,
-            bufsize=1,  # line-buffered
-        )
+        try:
+            self._proc = subprocess.Popen(
+                self._cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._env,
+                cwd=self._cwd,
+                text=True,
+                bufsize=1,  # line-buffered
+            )
+        except OSError as exc:
+            raise WorkerCrashedError(f"Failed to start worker: {exc}") from exc
         logger.debug("WorkerProcess started (pid=%d): %s", self._proc.pid, self._cmd)
 
     def stop(self) -> None:
@@ -123,9 +126,18 @@ class WorkerProcess:
             if not response_line:
                 raise EOFError("Worker closed stdout without a response")
 
-            return json.loads(response_line)
+            response = json.loads(response_line)
+            if not isinstance(response, dict):
+                raise ValueError("Worker response is not a JSON object")
+            return response
 
-        except (BrokenPipeError, EOFError, json.JSONDecodeError) as exc:
+        except (
+            BrokenPipeError,
+            EOFError,
+            OSError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
             return self._handle_crash(exc, request)
 
     def _handle_crash(
@@ -135,7 +147,8 @@ class WorkerProcess:
         stderr_tail = ""
         if self._proc is not None:
             try:
-                self._proc.kill()
+                if self._proc.poll() is None:
+                    self._proc.kill()
                 _, stderr_tail = self._proc.communicate(timeout=2)
             except Exception:
                 pass

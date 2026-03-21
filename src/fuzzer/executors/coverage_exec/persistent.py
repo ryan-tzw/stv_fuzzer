@@ -54,7 +54,17 @@ class PersistentCoverageExecutor(_CoverageExecutorBase):
 
     def run(self, input_data: str | None = None) -> ExecutionResult[CoveragePayload]:
         """Execute via worker and return stdout/stderr/exit code and coverage."""
-        payload = self._worker.send({"input": input_data})
+        from fuzzer.executors.worker import WorkerCrashedError
+
+        try:
+            payload = self._worker.send({"input": input_data})
+        except WorkerCrashedError as exc:
+            return ExecutionResult(
+                stdout="",
+                stderr=str(exc),
+                exit_code=1,
+                result=cast(CoveragePayload, {}),
+            )
 
         if "_worker_error" in payload:
             return ExecutionResult(
