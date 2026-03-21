@@ -41,6 +41,13 @@ class DifferentialExecutor(Executor):
         self.blackbox.stop()
         self.whitebox.stop()
 
+    def __enter__(self) -> "DifferentialExecutor":
+        self.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.stop()
+
     def run(self, input_data: str | None = None) -> ExecutionResult[DifferentialResult]:
         """Run both executors and return a bundled result.
 
