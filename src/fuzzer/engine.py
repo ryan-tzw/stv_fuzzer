@@ -47,6 +47,19 @@ class FuzzingEngine:
         else:
             raise ValueError(f"Unknown scheduler: {self.config.scheduler!r}")
 
+    def _stop_reason(self, iteration: int, start_time: float) -> str | None:
+        max_iterations = self.config.max_iterations
+        if max_iterations is not None and iteration >= max_iterations:
+            return f"reached max iterations ({max_iterations})"
+
+        time_limit = self.config.time_limit
+        if time_limit is not None:
+            elapsed = time.monotonic() - start_time
+            if elapsed >= time_limit:
+                return f"reached time limit ({time_limit}s)"
+
+        return None
+
     def run(self) -> None:
         self.corpus.load()
 
@@ -59,22 +72,10 @@ class FuzzingEngine:
 
             try:
                 while True:
-                    # Check stopping conditions
-                    if (
-                        self.config.max_iterations != -1
-                        and iteration >= self.config.max_iterations
-                    ):
-                        self.logger.log_stop_reason(
-                            f"reached max iterations ({self.config.max_iterations})"
-                        )
+                    stop_reason = self._stop_reason(iteration, start_time)
+                    if stop_reason is not None:
+                        self.logger.log_stop_reason(stop_reason)
                         break
-                    if self.config.time_limit != -1:
-                        elapsed = time.monotonic() - start_time
-                        if elapsed >= self.config.time_limit:
-                            self.logger.log_stop_reason(
-                                f"reached time limit ({self.config.time_limit}s)"
-                            )
-                            break
 
                     # Pick seed and compute energy
                     seed = self.scheduler.next(self.corpus.seeds())

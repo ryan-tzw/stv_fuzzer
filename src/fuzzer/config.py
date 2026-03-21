@@ -21,9 +21,9 @@ class FuzzerConfig:
     # Output
     runs_dir: Path = Path("runs")
 
-    # Stopping conditions (-1 = disabled)
-    max_iterations: int = 1000
-    time_limit: int = 60  # seconds
+    # Stopping conditions (None = disabled)
+    max_iterations: int | None = 1000
+    time_limit: int | None = 60  # seconds
 
     # Scheduler ("random" or "fast")
     scheduler: str = "fast"
@@ -43,3 +43,17 @@ class FuzzerConfig:
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
         self.runs_dir = Path(self.runs_dir).resolve()
+        self.max_iterations = self._normalise_limit(
+            self.max_iterations,
+            "max_iterations",
+        )
+        self.time_limit = self._normalise_limit(self.time_limit, "time_limit")
+
+    @staticmethod
+    def _normalise_limit(value: int | None, name: str) -> int | None:
+        """Normalise optional stop limits; accept -1 for backward compatibility."""
+        if value is None or value == -1:
+            return None
+        if value < 0:
+            raise ValueError(f"{name} must be >= 0, -1, or None")
+        return value

@@ -149,6 +149,17 @@ class FuzzerLogger:
     # --- Panels --------------------------------------------------------
 
     def _build_header(self) -> Panel:
+        max_iterations = (
+            str(self._config.max_iterations)
+            if self._config.max_iterations is not None
+            else "disabled"
+        )
+        time_limit = (
+            f"{self._config.time_limit}s"
+            if self._config.time_limit is not None
+            else "disabled"
+        )
+
         grid = Table.grid(padding=(0, 2))
         grid.add_column(style="bold cyan", min_width=16)
         grid.add_column()
@@ -157,8 +168,7 @@ class FuzzerLogger:
         grid.add_row("Harness:", self._config.harness)
         grid.add_row(
             "Stop conditions:",
-            f"max_iterations={self._config.max_iterations}  "
-            f"time_limit={self._config.time_limit}s",
+            f"max_iterations={max_iterations}  time_limit={time_limit}",
         )
         grid.add_row("Scheduler:", self._config.scheduler)
         return Panel(

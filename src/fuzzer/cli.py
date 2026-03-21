@@ -75,9 +75,11 @@ def main() -> int:
     if args.runs_dir is not None:
         config.runs_dir = args.runs_dir
     if args.max_iterations is not None:
-        config.max_iterations = args.max_iterations
+        config.max_iterations = (
+            None if args.max_iterations == -1 else args.max_iterations
+        )
     if args.time_limit is not None:
-        config.time_limit = args.time_limit
+        config.time_limit = None if args.time_limit == -1 else args.time_limit
     if args.scheduler is not None:
         config.scheduler = args.scheduler
     if args.energy_c is not None:
