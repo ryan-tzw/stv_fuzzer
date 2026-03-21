@@ -27,8 +27,10 @@ class FuzzingEngine:
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.db = FuzzerDatabase(self.run_dir / "results.db")
-        self.corpus = CorpusManager(config.corpus_dir, self.db)
-        self.mutator = Mutator()
+        self.corpus = CorpusManager(
+            config.corpus_dir, self.db, self.config.grammar, self.config.generator_dir
+        )
+        self.mutator = self._build_mutator()
         self.scheduler = self._build_scheduler()
         self.executor = PersistentCoverageExecutor(
             config.project_dir, config.harness_path
@@ -36,6 +38,32 @@ class FuzzingEngine:
         self.observer = InProcessCoverageObserver(config.project_dir)
         self.feedback = CoverageFeedback()
         self.logger = FuzzerLogger(self.run_dir, config)
+
+    def _build_mutator(self) -> Mutator:
+        if not self.config.grammar:
+            from .core.mutator.strategies import BlindRandomStrategy
+
+            return Mutator(strategy=BlindRandomStrategy())
+
+        if self.config.grammar == "json":
+            from .grammars.parser.parser import jsonParser
+            from .grammars.operations.jsonOperations import JsonGrammarOperations
+            from .core.mutator.strategies import GrammarStrategy
+
+            strategy = GrammarStrategy(
+                jsonParser(self.config.antlr_dir), JsonGrammarOperations()
+            )
+            return Mutator(strategy=strategy)
+        elif self.config.grammar == "ip":
+            from .grammars.parser.parser import ipParser
+            from .grammars.operations.ipOperations import IpGrammarOperations
+            from .core.mutator.strategies import GrammarStrategy
+
+            strategy = GrammarStrategy(
+                ipParser(self.config.antlr_dir), IpGrammarOperations()
+            )
+            return Mutator(strategy=strategy)
+        raise ValueError(f"Unknown grammar configuration: {self.config.grammar}")
 
     def _build_scheduler(self) -> Scheduler:
         if self.config.scheduler == "fast":
@@ -82,7 +110,9 @@ class FuzzingEngine:
                     energy = self.scheduler.energy(seed)
 
                     for _ in range(energy):
-                        mutated = self.mutator.mutate(seed.data)
+                        mutated = self.mutator.mutate(
+                            seed.data, depth=self.config.mutate_depth
+                        )
 
                         stdout, stderr, coverage_file = self.executor.run(mutated)
                         self.corpus.record_fuzzed(seed)
