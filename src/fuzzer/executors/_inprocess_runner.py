@@ -11,10 +11,17 @@ import json
 import runpy
 import sys
 import traceback
+from typing import TypedDict
 
 import coverage as _coverage_module
 
-from fuzzer.executors.coverage_exec.types import CoveragePayload
+
+class _CoverageEntry(TypedDict):
+    lines: list[int]
+    arcs: list[list[int]]
+
+
+_CoveragePayload = dict[str, _CoverageEntry]
 
 # --------------------------------------------------------------------------- #
 #  Core: run the harness once and return a payload dict                       #
@@ -72,7 +79,7 @@ def _run_once(harness_path: str, harness_argv: list, input_str: str | None) -> d
         sys.stderr = old_stderr
 
     cov_data = cov.get_data()
-    coverage_dict: CoveragePayload = {}
+    coverage_dict: _CoveragePayload = {}
     for file_path in cov_data.measured_files():
         lines = cov_data.lines(file_path)
         arcs = cov_data.arcs(file_path)
