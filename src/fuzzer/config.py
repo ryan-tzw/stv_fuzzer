@@ -51,6 +51,19 @@ class FuzzerConfig:
             "max_iterations",
         )
         self.time_limit = self._normalise_limit(self.time_limit, "time_limit")
+        self._validate_paths()
+
+    def _validate_paths(self) -> None:
+        if not self.project_dir.exists() or not self.project_dir.is_dir():
+            raise ValueError(
+                f"project_dir does not exist or is not a directory: {self.project_dir}"
+            )
+
+        if not self.harness_path.exists() or not self.harness_path.is_file():
+            raise ValueError(f"Harness script not found: {self.harness_path}")
+
+        if not self.corpus_dir.exists() or not self.corpus_dir.is_dir():
+            raise ValueError(f"Corpus directory not found: {self.corpus_dir}")
 
     @staticmethod
     def _normalise_limit(value: int | None, name: str) -> int | None:

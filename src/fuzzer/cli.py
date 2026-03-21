@@ -75,28 +75,35 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Start from config defaults, then apply any explicit CLI overrides
+    max_iterations = None if args.max_iterations == -1 else args.max_iterations
+    time_limit = None if args.time_limit == -1 else args.time_limit
+
+    # Build config in one pass so __post_init__ normalization/validation applies
+    # to both defaults and CLI overrides.
     config = FuzzerConfig(
         project_dir=args.project_dir,
         harness=args.harness,
         corpus=args.corpus,
+        runs_dir=args.runs_dir if args.runs_dir is not None else FuzzerConfig.runs_dir,
+        max_iterations=(
+            max_iterations
+            if max_iterations is not None
+            else FuzzerConfig.max_iterations
+        ),
+        time_limit=time_limit if time_limit is not None else FuzzerConfig.time_limit,
+        scheduler=args.scheduler
+        if args.scheduler is not None
+        else FuzzerConfig.scheduler,
+        mutation_strategy=(
+            args.mutation_strategy
+            if args.mutation_strategy is not None
+            else FuzzerConfig.mutation_strategy
+        ),
+        energy_c=args.energy_c if args.energy_c is not None else FuzzerConfig.energy_c,
+        max_energy=(
+            args.max_energy if args.max_energy is not None else FuzzerConfig.max_energy
+        ),
     )
-    if args.runs_dir is not None:
-        config.runs_dir = args.runs_dir
-    if args.max_iterations is not None:
-        config.max_iterations = (
-            None if args.max_iterations == -1 else args.max_iterations
-        )
-    if args.time_limit is not None:
-        config.time_limit = None if args.time_limit == -1 else args.time_limit
-    if args.scheduler is not None:
-        config.scheduler = args.scheduler
-    if args.energy_c is not None:
-        config.energy_c = args.energy_c
-    if args.max_energy is not None:
-        config.max_energy = args.max_energy
-    if args.mutation_strategy is not None:
-        config.mutation_strategy = args.mutation_strategy
 
     FuzzingEngine(config).run()
     return 0
