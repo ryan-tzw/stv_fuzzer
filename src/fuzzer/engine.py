@@ -47,6 +47,43 @@ class FuzzingEngine:
 
         return None
 
+    def _process_seed(
+        self, seed, iteration: int, unique_crashes: int
+    ) -> tuple[int, int]:
+        """Run fuzz iterations for one selected seed and update counters."""
+        self.corpus.record_picked(seed)
+        energy = self.scheduler.energy(seed)
+
+        for _ in range(energy):
+            mutated = self.mutator.mutate(seed.data)
+
+            run_result = self.executor.run(mutated)
+            self.corpus.record_fuzzed(seed)
+
+            signal = self.observer.observe(run_result.result)
+            add_to_corpus = self.feedback.evaluate(signal)
+            is_crash = self.crash_detector.is_crash(
+                exit_code=run_result.exit_code,
+                stderr=run_result.stderr,
+            )
+
+            if is_crash:
+                is_new = self.db.record_crash(mutated, run_result.stderr)
+                if is_new:
+                    unique_crashes += 1
+                    self.logger.log_crash(iteration, unique_crashes)
+                else:
+                    self.logger.log_duplicate_crash(iteration)
+
+            if add_to_corpus:
+                self.corpus.add(mutated)
+                self.logger.log_corpus_add(iteration)
+
+            iteration += 1
+            self.logger.tick(iteration)
+
+        return iteration, unique_crashes
+
     def run(self) -> None:
         self.corpus.load()
 
@@ -64,38 +101,10 @@ class FuzzingEngine:
                         self.logger.log_stop_reason(stop_reason)
                         break
 
-                    # Pick seed and compute energy
                     seed = self.scheduler.next(self.corpus.seeds())
-                    self.corpus.record_picked(seed)
-                    energy = self.scheduler.energy(seed)
-
-                    for _ in range(energy):
-                        mutated = self.mutator.mutate(seed.data)
-
-                        run_result = self.executor.run(mutated)
-                        self.corpus.record_fuzzed(seed)
-
-                        signal = self.observer.observe(run_result.result)
-                        add_to_corpus = self.feedback.evaluate(signal)
-                        is_crash = self.crash_detector.is_crash(
-                            exit_code=run_result.exit_code,
-                            stderr=run_result.stderr,
-                        )
-
-                        if is_crash:
-                            is_new = self.db.record_crash(mutated, run_result.stderr)
-                            if is_new:
-                                unique_crashes += 1
-                                self.logger.log_crash(iteration, unique_crashes)
-                            else:
-                                self.logger.log_duplicate_crash(iteration)
-
-                        if add_to_corpus:
-                            self.corpus.add(mutated)
-                            self.logger.log_corpus_add(iteration)
-
-                        iteration += 1
-                        self.logger.tick(iteration)
+                    iteration, unique_crashes = self._process_seed(
+                        seed, iteration, unique_crashes
+                    )
 
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")
