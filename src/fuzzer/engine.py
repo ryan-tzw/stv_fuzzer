@@ -5,21 +5,17 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 import time
 from datetime import datetime
 
+from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
-from fuzzer.core import CorpusManager, Mutator
-from fuzzer.core.mutator import build_strategy
-from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
-from fuzzer.executors import PersistentCoverageExecutor
-from fuzzer.feedback import CoverageFeedback, ExitCodeCrashDetector
+from fuzzer.core import CorpusManager
 from fuzzer.logger import FuzzerLogger
-from fuzzer.observers.python_coverage import (
-    InProcessCoverageObserver,
-)
 from fuzzer.storage.database import FuzzerDatabase
 
 
 class FuzzingEngine:
-    def __init__(self, config: FuzzerConfig):
+    def __init__(
+        self, config: FuzzerConfig, components: EngineComponents | None = None
+    ):
         self.config = config
 
         # Set up run output directory and database
@@ -29,29 +25,14 @@ class FuzzingEngine:
 
         self.db = FuzzerDatabase(self.run_dir / "results.db")
         self.corpus = CorpusManager(config.corpus_dir, self.db)
-        self.mutator = self._build_mutator()
-        self.scheduler = self._build_scheduler()
-        self.executor = PersistentCoverageExecutor(
-            config.project_dir, config.harness_path
-        )
-        self.observer = InProcessCoverageObserver(config.project_dir)
-        self.feedback = CoverageFeedback()
-        self.crash_detector = ExitCodeCrashDetector()
+        runtime_components = components or build_engine_components(config)
+        self.mutator = runtime_components.mutator
+        self.scheduler = runtime_components.scheduler
+        self.executor = runtime_components.executor
+        self.observer = runtime_components.observer
+        self.feedback = runtime_components.feedback
+        self.crash_detector = runtime_components.crash_detector
         self.logger = FuzzerLogger(self.run_dir, config)
-
-    def _build_scheduler(self) -> Scheduler:
-        if self.config.scheduler == "fast":
-            return FastScheduler(
-                c=self.config.energy_c, max_energy=self.config.max_energy
-            )
-        elif self.config.scheduler == "random":
-            return RandomScheduler()
-        else:
-            raise ValueError(f"Unknown scheduler: {self.config.scheduler!r}")
-
-    def _build_mutator(self) -> Mutator:
-        strategy = build_strategy(self.config.mutation_strategy)
-        return Mutator(strategy=strategy)
 
     def _stop_reason(self, iteration: int, start_time: float) -> str | None:
         max_iterations = self.config.max_iterations

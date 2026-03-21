@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import List
 
+from fuzzer.executors.base import Executor
+
 _RUNNER_SCRIPT = Path(__file__).parent.parent / "_inprocess_runner.py"
 
 
@@ -37,7 +39,7 @@ def uv_base_cmd(project_dir: Path) -> List[str]:
     ]
 
 
-class CoverageExecutorBase:
+class CoverageExecutorBase(Executor):
     """Shared initialisation for the coverage-based executors.
 
     This class is *internal* to the executors package and is not exposed in
