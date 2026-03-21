@@ -1,3 +1,4 @@
+from .mutator import Mutator
 from .operations import (
     DeleteChar,
     DuplicateChar,
@@ -5,11 +6,17 @@ from .operations import (
     MutationOperation,
     RandomiseChar,
 )
-from .strategies import MutationStrategy, RandomSingleStrategy
-from .mutator import Mutator
+from .strategies import (
+    AVAILABLE_STRATEGIES,
+    MutationStrategy,
+    RandomSingleStrategy,
+    build_strategy,
+)
 
 __all__ = [
     "Mutator",
+    "AVAILABLE_STRATEGIES",
+    "build_strategy",
     "MutationStrategy",
     "RandomSingleStrategy",
     "MutationOperation",

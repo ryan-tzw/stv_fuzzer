@@ -28,6 +28,9 @@ class FuzzerConfig:
     # Scheduler ("random" or "fast")
     scheduler: str = "fast"
 
+    # Mutation strategy
+    mutation_strategy: str = "random_single"
+
     # FastScheduler parameters
     energy_c: float = 1.0
     max_energy: int = 100

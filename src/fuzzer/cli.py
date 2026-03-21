@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from fuzzer.config import CORPUS_DIR, HARNESSES_DIR, FuzzerConfig
+from fuzzer.core.mutator import AVAILABLE_STRATEGIES
 from fuzzer.engine import FuzzingEngine
 
 
@@ -64,6 +65,14 @@ def main() -> int:
         help=f"Max energy cap for FastScheduler (default: {FuzzerConfig.max_energy})",
     )
 
+    # Mutation
+    parser.add_argument(
+        "--mutation-strategy",
+        choices=AVAILABLE_STRATEGIES,
+        default=None,
+        help=f"Mutation strategy (default: {FuzzerConfig.mutation_strategy})",
+    )
+
     args = parser.parse_args()
 
     # Start from config defaults, then apply any explicit CLI overrides
@@ -86,6 +95,8 @@ def main() -> int:
         config.energy_c = args.energy_c
     if args.max_energy is not None:
         config.max_energy = args.max_energy
+    if args.mutation_strategy is not None:
+        config.mutation_strategy = args.mutation_strategy
 
     FuzzingEngine(config).run()
     return 0

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager, Mutator
+from fuzzer.core.mutator import build_strategy
 from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import PersistentCoverageExecutor
 from fuzzer.feedback import CoverageFeedback, ExitCodeCrashDetector
@@ -28,7 +29,7 @@ class FuzzingEngine:
 
         self.db = FuzzerDatabase(self.run_dir / "results.db")
         self.corpus = CorpusManager(config.corpus_dir, self.db)
-        self.mutator = Mutator()
+        self.mutator = self._build_mutator()
         self.scheduler = self._build_scheduler()
         self.executor = PersistentCoverageExecutor(
             config.project_dir, config.harness_path
@@ -47,6 +48,10 @@ class FuzzingEngine:
             return RandomScheduler()
         else:
             raise ValueError(f"Unknown scheduler: {self.config.scheduler!r}")
+
+    def _build_mutator(self) -> Mutator:
+        strategy = build_strategy(self.config.mutation_strategy)
+        return Mutator(strategy=strategy)
 
     def _stop_reason(self, iteration: int, start_time: float) -> str | None:
         max_iterations = self.config.max_iterations
