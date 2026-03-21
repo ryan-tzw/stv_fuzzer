@@ -2,12 +2,16 @@
 SQLite-backed storage for corpus seeds and crash reports.
 """
 
-import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.core.corpus import SeedInput, SeedMetadata
+from fuzzer.storage.crash_parser import (
+    CrashParser,
+    CrashReport,
+    PythonTracebackCrashParser,
+)
 
 
 def _now() -> str:
@@ -15,11 +19,12 @@ def _now() -> str:
 
 
 class FuzzerDatabase:
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, crash_parser: CrashParser | None = None):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
         self._conn.row_factory = sqlite3.Row
+        self._crash_parser = crash_parser or PythonTracebackCrashParser()
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -102,43 +107,11 @@ class FuzzerDatabase:
     # Crashes
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def parse_crash(stderr: str) -> dict:
+    def parse_crash(self, stderr: str) -> CrashReport:
         """
-        Parse traceback text from stderr into structured fields.
-        Returns a dict with keys: exception_type, exception_message, file, line, traceback.
+        Parse stderr traceback text into a structured crash report.
         """
-        # Strip legacy leading "ERR:" marker if present.
-        tb_text = stderr.strip()
-        if tb_text.startswith("ERR:"):
-            tb_text = tb_text[4:]
-
-        # Last line of traceback: "ExceptionType: message" or just "ExceptionType"
-        lines = tb_text.strip().splitlines()
-        last_line = lines[-1].strip() if lines else ""
-        if ":" in last_line:
-            exc_type, exc_msg = last_line.split(":", 1)
-        else:
-            exc_type, exc_msg = last_line, ""
-
-        # Find the last "File ..., line N" frame
-        file_match = None
-        for line in reversed(lines):
-            m = re.match(r'\s*File "(.+)", line (\d+)', line)
-            if m:
-                file_match = m
-                break
-
-        crash_file = file_match.group(1) if file_match else "unknown"
-        crash_line = int(file_match.group(2)) if file_match else -1
-
-        return {
-            "exception_type": exc_type.strip(),
-            "exception_message": exc_msg.strip(),
-            "file": crash_file,
-            "line": crash_line,
-            "traceback": tb_text.strip(),
-        }
+        return self._crash_parser.parse(stderr)
 
     def record_crash(self, data: str, stderr: str) -> bool:
         """
@@ -151,7 +124,7 @@ class FuzzerDatabase:
 
         existing = self._conn.execute(
             "SELECT id FROM crashes WHERE exception_type = ? AND file = ? AND line = ?",
-            (parsed["exception_type"], parsed["file"], parsed["line"]),
+            (parsed.exception_type, parsed.file, parsed.line),
         ).fetchone()
 
         if existing:
@@ -169,11 +142,11 @@ class FuzzerDatabase:
                 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
-                    parsed["exception_type"],
-                    parsed["exception_message"],
-                    parsed["file"],
-                    parsed["line"],
-                    parsed["traceback"],
+                    parsed.exception_type,
+                    parsed.exception_message,
+                    parsed.file,
+                    parsed.line,
+                    parsed.traceback,
                     data,
                     now,
                     now,
