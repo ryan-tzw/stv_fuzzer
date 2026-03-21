@@ -1,6 +1,7 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from fuzzer.executors.base import ExecutionResult
 
@@ -10,6 +11,7 @@ from .base import (
 from .base import (
     CoverageExecutorBase as _CoverageExecutorBase,
 )
+from .types import CoveragePayload
 
 
 class InProcessCoverageExecutor(_CoverageExecutorBase):
@@ -23,7 +25,7 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
     ):
         super().__init__(project_dir, script_path, script_args)
 
-    def run(self, input_data: str | None = None) -> ExecutionResult[dict]:
+    def run(self, input_data: str | None = None) -> ExecutionResult[CoveragePayload]:
         """Return stdout/stderr/exit code and in-memory coverage dict."""
         env = self._prepare_env()
 
@@ -53,12 +55,12 @@ class InProcessCoverageExecutor(_CoverageExecutorBase):
                 stdout=result.stdout,
                 stderr=result.stderr,
                 exit_code=result.returncode,
-                result={},
+                result=cast(CoveragePayload, {}),
             )
 
         return ExecutionResult(
             stdout=payload.get("stdout", ""),
             stderr=payload.get("stderr", ""),
             exit_code=int(payload.get("exit_code", result.returncode)),
-            result=payload.get("coverage", {}),
+            result=cast(CoveragePayload, payload.get("coverage", {})),
         )
