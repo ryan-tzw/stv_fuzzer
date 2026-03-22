@@ -10,6 +10,7 @@ from fuzzer.config import (
 )
 from fuzzer.core.mutator import AVAILABLE_STRATEGIES
 from fuzzer.engine import FuzzingEngine
+from fuzzer.parallel import run_parallel
 
 
 def main() -> int:
@@ -93,6 +94,12 @@ def main() -> int:
         default=None,
         help=f"Directory to write run output to (default: {FuzzerConfig.runs_dir})",
     )
+    parser.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes (default: 1)",
+    )
 
     # Stopping conditions
     parser.add_argument(
@@ -137,6 +144,8 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.parallel_workers < 1:
+        parser.error("--parallel-workers must be >= 1")
 
     if args.list_profiles:
         for name in profile_choices:
@@ -224,6 +233,9 @@ def main() -> int:
             else base.get("max_energy", FuzzerConfig.max_energy)
         ),
     )
+
+    if args.parallel_workers > 1:
+        return run_parallel(config, args.parallel_workers)
 
     FuzzingEngine(config).run()
     return 0

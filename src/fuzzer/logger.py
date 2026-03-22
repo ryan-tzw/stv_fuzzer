@@ -13,6 +13,8 @@ Usage:
     logger.print_summary(iteration, elapsed)
 """
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -117,6 +119,8 @@ class FuzzerLogger:
         self._console = Console()
         self._state = FuzzerState()
         self._display = FuzzerDisplay(run_dir, config, self._state)
+        status_file = os.environ.get("STV_FUZZER_STATUS_FILE")
+        self._status_file = Path(status_file).resolve() if status_file else None
 
         self._live = Live(
             self,
@@ -154,10 +158,12 @@ class FuzzerLogger:
         """Call once before entering the fuzzing loop."""
         self._state.start_time = time.monotonic()
         self._state.corpus_size = corpus_size
+        self._write_status(running=True)
 
     def tick(self, iteration: int) -> None:
         """Call each iteration to keep the iteration counter current."""
         self._state.iteration = iteration
+        self._write_status(running=True)
 
     def log_corpus_add(self, iteration: int) -> None:
         self._state.iteration = iteration
@@ -166,6 +172,7 @@ class FuzzerLogger:
             f"[iter {iteration}] New coverage — corpus size: {self._state.corpus_size}",
             style="green",
         )
+        self._write_status(running=True)
 
     def log_crash(self, iteration: int, unique_crashes: int) -> None:
         self._state.iteration = iteration
@@ -174,6 +181,7 @@ class FuzzerLogger:
             f"[iter {iteration}] New unique crash! Total unique: {unique_crashes}",
             style="bold red",
         )
+        self._write_status(running=True)
 
     def log_duplicate_crash(self, iteration: int) -> None:
         self._state.iteration = iteration
@@ -181,9 +189,11 @@ class FuzzerLogger:
             f"[iter {iteration}] Duplicate crash (not recorded again)",
             style="dim red",
         )
+        self._write_status(running=True)
 
     def log_stop_reason(self, reason: str) -> None:
         self._push_event(f"Stopped — {reason}", style="bold yellow")
+        self._write_status(running=True, stop_reason=reason)
 
     def print_summary(self, iteration: int, elapsed: float) -> None:
         """Print a final summary below the dashboard after Live exits."""
@@ -199,6 +209,7 @@ class FuzzerLogger:
         summary.add_row("Elapsed:", elapsed_str)
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
+        self._write_status(running=False)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -209,3 +220,24 @@ class FuzzerLogger:
         self._state.events.append(t)
         if len(self._state.events) > self._MAX_EVENTS:
             self._state.events.pop(0)
+
+    def _write_status(self, running: bool, stop_reason: str | None = None) -> None:
+        if self._status_file is None:
+            return
+
+        payload = {
+            "iteration": self._state.iteration,
+            "corpus_size": self._state.corpus_size,
+            "unique_crashes": self._state.unique_crashes,
+            "execs_per_s": round(self._state.execs_per_s(), 2),
+            "elapsed_s": int(
+                time.monotonic() - (self._state.start_time or time.monotonic())
+            ),
+            "running": running,
+            "stop_reason": stop_reason,
+        }
+
+        self._status_file.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self._status_file.with_suffix(self._status_file.suffix + ".tmp")
+        temp_path.write_text(json.dumps(payload), encoding="utf-8")
+        temp_path.replace(self._status_file)
