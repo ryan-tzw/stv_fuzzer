@@ -222,12 +222,12 @@ def _build_worker_cmd(config: FuzzerConfig, worker_runs_dir: Path) -> list[str]:
         cmd.extend(["--time-limit", str(config.time_limit)])
 
     for arg in config.harness_args:
-        cmd.extend(["--harness-arg", arg])
+        cmd.append(f"--harness-arg={arg}")
 
     if config.blackbox_binary is not None:
         cmd.extend(["--blackbox-binary", str(config.blackbox_binary)])
-        cmd.extend(["--blackbox-input-flag", config.blackbox_input_flag])
+        cmd.append(f"--blackbox-input-flag={config.blackbox_input_flag}")
         for arg in config.blackbox_args:
-            cmd.extend(["--blackbox-arg", arg])
+            cmd.append(f"--blackbox-arg={arg}")
 
     return cmd
