@@ -6,31 +6,95 @@ from antlr4 import TerminalNode
 
 class ipAstBuilder(ipVisitor):
     """
-    Build a compact AST for the NEW ip grammar (the version with ipAddress root,
-    ipv4Address/ipv4Octet, h16, ls32, and the detailed ipv6Address alternatives).
+    Build a compact AST for the ip grammar.
 
-    Produced node types (kept compatible with previous expectations):
+    Produced node types:
       - Ipv4 (children = Octet nodes)
       - Octet (value = string, e.g. "192" or "001")
       - Ipv6Full / Ipv6Compressed (children = H16 / DoubleColon / Ipv4 nodes)
       - H16 (value = string)
       - DoubleColon (value = "::")
-      - Ipv4 (nested when used as IPv4-mapped/dual-stack suffix)
-
-    Compression (::) is detected automatically even though the grammar uses two COLON tokens.
-    Textual fidelity for IPv6 is preserved via structured children instead of raw getText().
+      - Ipv4Cidr / Ipv6Cidr (children = IP node, Prefix node)
+      - Ipv4Range / Ipv4ShorthandRange / Ipv6Range
+      - Ipv4Bracket / Ipv4BracketOctets
+      - Ipv4Wildcard
+      - PrefixV4 / PrefixV6 / BracketContent (value = string)
     """
 
-    # ================= ROOT =================
-    def visitIpAddress(self, ctx: ipParser.IpAddressContext):
+    # ROOT
+    def visitIpExpression(self, ctx: ipParser.IpExpressionContext):
         """Entry point - matches the root rule of the new grammar."""
-        if ctx.ipv4Address():
-            return self.visit(ctx.ipv4Address())
-        if ctx.ipv6Address():
-            return self.visit(ctx.ipv6Address())
-        return AstNode("Ip", value=ctx.getText())
+        if ctx.ipv4Expression():
+            return self.visit(ctx.ipv4Expression())
+        if ctx.ipv6Expression():
+            return self.visit(ctx.ipv6Expression())
+        return AstNode("IpExpr", value=ctx.getText())
 
-    # ================= IPv4 =================
+    # IPv4 EXPRESSIONS
+    def visitIpv4Expression(self, ctx: ipParser.Ipv4ExpressionContext):
+        ipv4_addrs = ctx.ipv4Address()
+        # CIDR: 192.168.1.1/24
+        if ctx.SLASH():
+            return AstNode(
+                "Ipv4Cidr",
+                children=[self.visit(ipv4_addrs[0]), self.visit(ctx.prefixV4())],
+            )
+        # Ranges: 10.0.0.1-10.0.0.5 or 10.0.0.1-5
+        if ctx.HYPHEN():
+            if len(ipv4_addrs) == 2:
+                # Full hyphen range
+                return AstNode(
+                    "Ipv4Range",
+                    children=[self.visit(ipv4_addrs[0]), self.visit(ipv4_addrs[1])],
+                )
+            else:
+                # Shorthand hyphen range
+                return AstNode(
+                    "Ipv4ShorthandRange",
+                    children=[self.visit(ipv4_addrs[0]), self.visit(ctx.ipv4Octet(0))],
+                )
+        # Bracket forms: 10.0.0.1[0-5] or 10.0.0.[0-5]
+        if ctx.LBRACKET():
+            bracket_content = self.visit(ctx.bracketContent())
+            if ipv4_addrs:
+                # Form 1: ipv4Address LBRACKET bracketContent RBRACKET
+                return AstNode(
+                    "Ipv4Bracket", children=[self.visit(ipv4_addrs[0]), bracket_content]
+                )
+            else:
+                # Form 2: ipv4Octet DOT ipv4Octet DOT ipv4Octet DOT LBRACKET bracketContent RBRACKET
+                octets = [self.visit(o) for o in ctx.ipv4Octet()]
+                return AstNode("Ipv4BracketOctets", children=[*octets, bracket_content])
+        # Wildcard: 10.0.0.*
+        if ctx.ASTERISK():
+            octets = [self.visit(o) for o in ctx.ipv4Octet()]
+            return AstNode("Ipv4Wildcard", children=octets)
+        # Lone IPv4 (Host Route)
+        if ipv4_addrs:
+            return self.visit(ipv4_addrs[0])
+        return AstNode("UnknownIpv4Expr", value=ctx.getText())
+
+    # IPv6 EXPRESSIONS
+    def visitIpv6Expression(self, ctx: ipParser.Ipv6ExpressionContext):
+        ipv6_addrs = ctx.ipv6Address()
+        # CIDR: 2001:db8::/32
+        if ctx.SLASH():
+            return AstNode(
+                "Ipv6Cidr",
+                children=[self.visit(ipv6_addrs[0]), self.visit(ctx.prefixV6())],
+            )
+        # Range: 2001:db8::1-2001:db8::5
+        if ctx.HYPHEN():
+            return AstNode(
+                "Ipv6Range",
+                children=[self.visit(ipv6_addrs[0]), self.visit(ipv6_addrs[1])],
+            )
+        # Lone IPv6 (Host Route)
+        if ipv6_addrs:
+            return self.visit(ipv6_addrs[0])
+        return AstNode("UnknownIpv6Expr", value=ctx.getText())
+
+    # IPv4 BASE
     def visitIpv4Address(self, ctx: ipParser.Ipv4AddressContext):
         octets = [self.visit(o) for o in ctx.ipv4Octet()]
         return AstNode("Ipv4", children=octets)
@@ -38,11 +102,16 @@ class ipAstBuilder(ipVisitor):
     def visitIpv4Octet(self, ctx: ipParser.Ipv4OctetContext):
         return AstNode("Octet", value=ctx.getText())
 
-    # ================= IPv6 =================
+    def visitPrefixV4(self, ctx: ipParser.PrefixV4Context):
+        return AstNode("PrefixV4", value=ctx.getText())
+
+    def visitBracketContent(self, ctx: ipParser.BracketContentContext):
+        return AstNode("BracketContent", value=ctx.getText())
+
+    # IPv6 BASE
     def visitIpv6Address(self, ctx: ipParser.Ipv6AddressContext):
         """
         Unified handler for ALL IPv6 forms (full + every compressed variant).
-        Builds the same Ipv6Full / Ipv6Compressed structure as the old builder.
         """
         children = []
         i = 0
@@ -60,7 +129,6 @@ class ipAstBuilder(ipVisitor):
                         children.append(AstNode("DoubleColon", value="::"))
                         i += 2
                         continue
-                    # single ":" → skip (as in the old builder)
                 i += 1
                 continue
 
@@ -79,7 +147,6 @@ class ipAstBuilder(ipVisitor):
 
             i += 1
 
-        # Decide node type exactly like the old builder
         is_compressed = any(
             isinstance(c, AstNode) and c.type == "DoubleColon" for c in children
         )
@@ -97,10 +164,12 @@ class ipAstBuilder(ipVisitor):
         """
         if ctx.ipv4Address():
             return self.visit(ctx.ipv4Address())
-        # Otherwise it's the h16 ":" h16 alternative
         return [self.visit(h) for h in ctx.h16()]
 
-    # ================= HELPERS (kept for compatibility) =================
+    def visitPrefixV6(self, ctx: ipParser.PrefixV6Context):
+        return AstNode("PrefixV6", value=ctx.getText())
+
+    # HELPERS
     def _as_list(self, x):
         return x if isinstance(x, list) else [x] if x else []
 
@@ -115,8 +184,7 @@ if __name__ == "__main__":
         token_stream = CommonTokenStream(lexer)
         parser = ipParser(token_stream)
 
-        # CHANGED: new grammar root is ipAddress (was ip_item)
-        tree = parser.ipAddress()
+        tree = parser.ipExpression()
         builder = ipAstBuilder()
         ast = builder.visit(tree)
         return ast
@@ -138,6 +206,22 @@ if __name__ == "__main__":
         "2001:db8:0:0:0:0:192.0.2.33",
         "::192.0.2.33",
         "::ffff:192.0.2.1",
+        # IPv4 prefix
+        "192.168.1.0/24",
+        "0.0.0.0/0",
+        # IPv4 range
+        "192.0.2.80-192.0.2.85",
+        "192.0.2.170-175",
+        # IPv4 bracket
+        "192.0.2.8[0-5]",
+        "21.43.180.1[40-99]",
+        "192.0.2.[5678]",
+        # IPv4 Wildcard
+        "15.63.148.*",
+        # IPv6 Prefix
+        "2001:0db8:0000:0000:0000:ff00:0042:8329/128",
+        # IPv6 range
+        "2001:db8::-2001:db8::ff",
     ]
 
     for ip in test_inputs:
