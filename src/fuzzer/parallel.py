@@ -8,6 +8,7 @@ which keeps core engine logic unchanged.
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -62,21 +63,29 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
         procs.append((worker_id, proc, log_path, status_path, log_file))
 
     start_time = time.monotonic()
-    with Live(
-        _render_dashboard(procs, session_dir, start_time),
-        console=console,
-        refresh_per_second=4,
-    ) as live:
-        while True:
-            live.update(_render_dashboard(procs, session_dir, start_time))
-            if all(proc.poll() is not None for _, proc, _, _, _ in procs):
-                break
-            time.sleep(0.25)
+    interrupted = False
+    try:
+        with Live(
+            _render_dashboard(procs, session_dir, start_time),
+            console=console,
+            refresh_per_second=4,
+        ) as live:
+            while True:
+                live.update(_render_dashboard(procs, session_dir, start_time))
+                if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+                    break
+                time.sleep(0.25)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\n[parallel] Ctrl+C received, stopping workers...", file=sys.stderr)
+        _graceful_stop_workers(procs)
 
     failed = False
     for worker_id, proc, log_path, _, log_file in procs:
         exit_code = proc.wait()
         log_file.close()
+        if interrupted:
+            continue
         if exit_code != 0:
             failed = True
             print(
@@ -85,12 +94,57 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
                 file=sys.stderr,
             )
 
+    if interrupted:
+        print(f"[parallel] stopped by user (session: {session_dir})")
+        return 0
+
     if failed:
         print(f"[parallel] session dir: {session_dir}", file=sys.stderr)
         return 1
 
     print(f"[parallel] all workers completed successfully (session: {session_dir})")
     return 0
+
+
+def _graceful_stop_workers(
+    procs: list[tuple[int, subprocess.Popen[bytes], Path, Path, BinaryIO]],
+    grace_seconds: float = 5.0,
+) -> None:
+    # First ask all running workers to stop cleanly (their engine handles
+    # KeyboardInterrupt and executes stop/finalization).
+    for _, proc, _, _, _ in procs:
+        if proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGINT)
+            except Exception:
+                pass
+
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline:
+        if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+            return
+        time.sleep(0.1)
+
+    # Fall back to terminate/kill if any worker ignored SIGINT.
+    for _, proc, _, _, _ in procs:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+            return
+        time.sleep(0.1)
+
+    for _, proc, _, _, _ in procs:
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
 
 def _render_dashboard(
