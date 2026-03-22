@@ -6,9 +6,6 @@ targets/
 
 # Auto-generated ANTLR output
 src/fuzzer/grammars/antlr/*
-src/fuzzer/grammars/generator/*
-!src/fuzzer/grammars/generator/generator.py
-!src/fuzzer/grammars/generator/__init__.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
