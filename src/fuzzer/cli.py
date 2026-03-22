@@ -44,6 +44,20 @@ def main() -> int:
         help=f"Time limit in seconds (-1 to disable, default: {FuzzerConfig.time_limit})",
     )
 
+    # Grammar Generator
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=3,
+        help="Max depth for JSON generation (default: 3)",
+    )
+    parser.add_argument(
+        "--ip-mode",
+        choices=["cidrize", "parser"],
+        default="cidrize",
+        help="Mode for IP generation (default: cidrize)",
+    )
+
     # Grammar
     parser.add_argument(
         "--grammar",
@@ -94,6 +108,10 @@ def main() -> int:
         config.time_limit = args.time_limit
     if args.grammar is not None:
         config.grammar = args.grammar
+        if config.grammar == "json":
+            config.generator_kwargs["max_depth"] = args.max_depth
+        elif args.grammar == "ip":
+            config.generator_kwargs["mode"] = args.ip_mode
     if args.mutate_depth is not None:
         config.mutate_depth = args.mutate_depth
     if args.scheduler is not None:

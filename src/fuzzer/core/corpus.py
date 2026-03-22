@@ -31,6 +31,7 @@ class CorpusManager:
         db: FuzzerDatabase,
         target_grammar: str | None = None,
         generator_dir: str | Path | None = None,
+        generator_kwargs: dict | None = None,
     ):
         """
         corpus_dir: directory of initial seed files to load at startup (only used on first run).
@@ -41,6 +42,7 @@ class CorpusManager:
         self.generator_dir = Path(generator_dir).resolve() if generator_dir else None
         self._db = db
         self.target_grammar = target_grammar
+        self.generator_kwargs = generator_kwargs or {}
         self._seeds: list[SeedInput] = []
 
     def load(self) -> None:
@@ -69,7 +71,9 @@ class CorpusManager:
                     f"Generator directory not found or not configured. "
                     f"Expected directory: {self.generator_dir} (required when using {self.target_grammar})"
                 )
-            generator = GrammarSeedGenerator(self.target_grammar, self.generator_dir)
+            generator = GrammarSeedGenerator(
+                self.target_grammar, self.generator_dir, **self.generator_kwargs
+            )
             generated_strings = generator.generate(count=10)
             for data in generated_strings:
                 seed = SeedInput(data=data)

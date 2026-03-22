@@ -28,7 +28,11 @@ class FuzzingEngine:
 
         self.db = FuzzerDatabase(self.run_dir / "results.db")
         self.corpus = CorpusManager(
-            config.corpus_dir, self.db, self.config.grammar, self.config.generator_dir
+            config.corpus_dir,
+            self.db,
+            self.config.grammar,
+            self.config.generator_dir,
+            self.config.generator_kwargs,
         )
         self.mutator = self._build_mutator()
         self.scheduler = self._build_scheduler()

@@ -2,7 +2,7 @@
 Configuration for the fuzzing engine.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Standard base directories relative to this package
@@ -29,6 +29,7 @@ class FuzzerConfig:
 
     # Grammar ("ip" or "json" or None)
     grammar: str | None = None
+    generator_kwargs: dict = field(default_factory=dict)
     mutate_depth: int = 1
 
     # Scheduler ("random" or "fast")
