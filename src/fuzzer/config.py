@@ -4,11 +4,62 @@ Configuration for the fuzzing engine.
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 # Standard base directories relative to this package
 _PACKAGE_DIR = Path(__file__).parent
 HARNESSES_DIR = _PACKAGE_DIR / "harnesses"
 CORPUS_DIR = _PACKAGE_DIR / "core" / "corpus"
+
+
+PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
+    "json_decoder_whitebox": {
+        "project_dir": Path("targets/json-decoder"),
+        "harness": "json-decoder",
+        "corpus": "json",
+        "mode": "coverage",
+    },
+    "ipv4_parser_differential": {
+        "project_dir": Path("targets/_reference/ipyparse"),
+        "harness": "ipyparse",
+        "corpus": "json",
+        "mode": "differential",
+        "harness_args": ("--family", "ipv4"),
+        "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv4-parser"),
+        "blackbox_input_flag": "--ipstr",
+    },
+    "ipv6_parser_differential": {
+        "project_dir": Path("targets/_reference/ipyparse"),
+        "harness": "ipyparse",
+        "corpus": "json",
+        "mode": "differential",
+        "harness_args": ("--family", "ipv6"),
+        "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv6-parser"),
+        "blackbox_input_flag": "--ipstr",
+    },
+    "cidrize_differential": {
+        "project_dir": Path("targets/_reference/cidrize"),
+        "harness": "cidrize",
+        "corpus": "json",
+        "mode": "differential",
+        "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
+        "blackbox_input_flag": "--ipstr",
+        "blackbox_args": ("--func", "cidrize"),
+    },
+}
+
+
+def available_profiles() -> tuple[str, ...]:
+    """Return the sorted list of built-in profile names."""
+    return tuple(sorted(PROFILE_CONFIGS))
+
+
+def profile_overrides(name: str) -> dict[str, Any]:
+    """Return profile key/value overrides for *name*."""
+    try:
+        return dict(PROFILE_CONFIGS[name])
+    except KeyError as exc:
+        raise ValueError(f"Unknown profile: {name!r}") from exc
 
 
 @dataclass
@@ -17,6 +68,17 @@ class FuzzerConfig:
     project_dir: Path
     harness: str  # name of the harness script (without .py)
     corpus: str  # name of the corpus type directory
+
+    # Execution mode
+    mode: str = "coverage"  # "coverage" or "differential"
+
+    # Harness arguments (passed to whitebox harness)
+    harness_args: tuple[str, ...] = ()
+
+    # Differential blackbox target options
+    blackbox_binary: Path | None = None
+    blackbox_input_flag: str = "--ipstr"
+    blackbox_args: tuple[str, ...] = ()
 
     # Output
     runs_dir: Path = Path("runs")
@@ -46,6 +108,10 @@ class FuzzerConfig:
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
         self.runs_dir = Path(self.runs_dir).resolve()
+        if self.blackbox_binary is not None:
+            self.blackbox_binary = Path(self.blackbox_binary).resolve()
+        self.harness_args = tuple(self.harness_args)
+        self.blackbox_args = tuple(self.blackbox_args)
         self.max_iterations = self._normalise_limit(
             self.max_iterations,
             "max_iterations",
@@ -64,6 +130,18 @@ class FuzzerConfig:
 
         if not self.corpus_dir.exists() or not self.corpus_dir.is_dir():
             raise ValueError(f"Corpus directory not found: {self.corpus_dir}")
+
+        if self.mode not in {"coverage", "differential"}:
+            raise ValueError(f"Unknown execution mode: {self.mode!r}")
+
+        if self.mode == "differential":
+            if self.blackbox_binary is None:
+                raise ValueError("blackbox_binary is required in differential mode")
+            if not self.blackbox_binary.exists() or not self.blackbox_binary.is_file():
+                raise ValueError(
+                    "blackbox_binary does not exist or is not a file: "
+                    f"{self.blackbox_binary}"
+                )
 
     @staticmethod
     def _normalise_limit(value: int | None, name: str) -> int | None:
