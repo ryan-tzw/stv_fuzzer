@@ -13,13 +13,13 @@ CORPUS_DIR = _PACKAGE_DIR / "core" / "corpus"
 
 
 PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
-    "json_decoder_whitebox": {
+    "json_decoder": {
         "project_dir": Path("targets/json-decoder"),
         "harness": "json-decoder",
         "corpus": "json",
         "mode": "coverage",
     },
-    "ipv4_parser_differential": {
+    "ipv4_parser": {
         "project_dir": Path("targets/_reference/ipyparse"),
         "harness": "ipyparse",
         "corpus": "json",
@@ -28,7 +28,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
         "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv4-parser"),
         "blackbox_input_flag": "--ipstr",
     },
-    "ipv6_parser_differential": {
+    "ipv6_parser": {
         "project_dir": Path("targets/_reference/ipyparse"),
         "harness": "ipyparse",
         "corpus": "json",
@@ -37,7 +37,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
         "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv6-parser"),
         "blackbox_input_flag": "--ipstr",
     },
-    "cidrize_differential": {
+    "cidrize": {
         "project_dir": Path("targets/_reference/cidrize"),
         "harness": "cidrize",
         "corpus": "json",
