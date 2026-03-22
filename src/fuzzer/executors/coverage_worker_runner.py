@@ -155,7 +155,7 @@ def main() -> None:
 
     if len(sys.argv) < 2:
         sys.stderr.write(
-            "Usage: _inprocess_runner.py [--loop] <harness_path> [args...]\n"
+            "Usage: coverage_worker_runner.py [--loop] <harness_path> [args...]\n"
         )
         sys.exit(1)
 

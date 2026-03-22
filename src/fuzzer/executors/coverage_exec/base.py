@@ -6,7 +6,7 @@ from typing import List
 
 from fuzzer.executors.base import Executor
 
-_RUNNER_SCRIPT = Path(__file__).parent.parent / "_inprocess_runner.py"
+_RUNNER_SCRIPT = Path(__file__).parent.parent / "coverage_worker_runner.py"
 
 
 def prepare_env(project_dir: Path) -> dict[str, str]:

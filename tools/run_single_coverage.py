@@ -14,7 +14,7 @@ from pathlib import Path
 def _build_cmd(
     project_dir: Path, harness_path: Path, harness_args: list[str]
 ) -> list[str]:
-    runner = Path("src/fuzzer/executors/_inprocess_runner.py").resolve()
+    runner = Path("src/fuzzer/executors/coverage_worker_runner.py").resolve()
     return [
         "uv",
         "run",
