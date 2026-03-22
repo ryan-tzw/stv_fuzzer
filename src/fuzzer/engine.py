@@ -53,6 +53,7 @@ class FuzzingEngine:
         iteration = 0
         unique_crashes = 0
         start_time = time.monotonic()
+        label_count = {}
 
         with self.logger:
             self.logger.start(corpus_size=len(self.corpus.seeds()))
@@ -84,23 +85,49 @@ class FuzzingEngine:
                     for _ in range(energy):
                         mutated = self.mutator.mutate(seed.data)
 
-                        stdout, stderr, coverage_file = self.executor.run(mutated)
+                        start = time.perf_counter()
+                        duration_ms = (time.perf_counter() - start) * 1000
+
+                        stdout, stderr, exit_code, coverage_file = self.executor.run(
+                            mutated
+                        )
                         self.corpus.record_fuzzed(seed)
 
                         signal = self.observer.observe(coverage_file)
-                        result = self.feedback.evaluate(signal, stderr)
+                        result = self.feedback.evaluate(
+                            mutated, exit_code, duration_ms, signal, stderr
+                        )
+
+                        for label in result.labels:
+                            if label not in label_count:
+                                label_count[label] = 0
+                            label_count[label] += 1
+
+                        if result.labels:
+                            self.logger.log_debug(
+                                f"[{iteration}] labels={result.labels} len={len(mutated)} input={repr(mutated)} exit={exit_code} time={duration_ms:.2f} ms"
+                                # self.logger.log_debug(f"[{iteration}] stderr_tail={stderr[-1000:]} input={mutated}")
+                            )
 
                         if result.is_crash:
                             is_new = self.db.record_crash(mutated, stderr)
                             if is_new:
                                 unique_crashes += 1
-                                self.logger.log_crash(iteration, unique_crashes)
+                                self.logger.log_crash(
+                                    iteration,
+                                    unique_crashes,
+                                    mutated,
+                                    result.labels,
+                                    exit_code,
+                                )
                             else:
                                 self.logger.log_duplicate_crash(iteration)
 
                         if result.add_to_corpus:
                             self.corpus.add(mutated)
-                            self.logger.log_corpus_add(iteration)
+                            self.logger.log_corpus_add(
+                                iteration, mutated, result.labels
+                            )
 
                         iteration += 1
                         self.logger.tick(iteration)
@@ -114,3 +141,5 @@ class FuzzingEngine:
 
         elapsed = time.monotonic() - start_time
         self.logger.print_summary(iteration, elapsed)
+
+        self.logger.print_categories_crashes(label_count)

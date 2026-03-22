@@ -83,19 +83,26 @@ class FuzzerLogger:
         """Call each iteration to keep the iteration counter current."""
         self._iteration = iteration
 
-    def log_corpus_add(self, iteration: int) -> None:
+    def log_corpus_add(self, iteration: int, input_data: str, labels: str) -> None:
         self._iteration = iteration
         self._corpus_size += 1
         self._push_event(
-            f"[iter {iteration}] New coverage — corpus size: {self._corpus_size}",
+            f"[iter {iteration}] New coverage — corpus size: {self._corpus_size},Input: {input_data}, Category: {labels}",
             style="green",
         )
 
-    def log_crash(self, iteration: int, unique_crashes: int) -> None:
+    def log_crash(
+        self,
+        iteration: int,
+        unique_crashes: int,
+        input_data: str,
+        labels: str,
+        exit_code: int,
+    ) -> None:
         self._iteration = iteration
         self._unique_crashes = unique_crashes
         self._push_event(
-            f"[iter {iteration}] New unique crash! Total unique: {unique_crashes}",
+            f"[iter {iteration}] New unique crash! Total unique: {unique_crashes}, Input: {input_data}, Category: {labels}, Exit Code: {exit_code}",
             style="bold red",
         )
 
@@ -108,6 +115,16 @@ class FuzzerLogger:
 
     def log_stop_reason(self, reason: str) -> None:
         self._push_event(f"Stopped — {reason}", style="bold yellow")
+
+    def print_categories_crashes(self, label_count):
+        self._console.print()
+        self._console.rule("[bold]Categorised Crashes[/bold]")
+        categories = Table.grid(padding=(0, 2))
+        categories.add_column(style="bold")
+        categories.add_column(style="red")
+        for label, count in label_count.items():
+            categories.add_row(f"{label}:", str(count))
+        self._console.print(categories)
 
     def print_summary(self, iteration: int, elapsed: float) -> None:
         """Print a final summary below the dashboard after Live exits."""
@@ -123,6 +140,9 @@ class FuzzerLogger:
         summary.add_row("Elapsed:", elapsed_str)
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
+
+    def log_debug(self, message: str) -> None:
+        print(message)
 
     # ------------------------------------------------------------------
     # Private helpers
