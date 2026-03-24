@@ -7,11 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.core.corpus import SeedInput, SeedMetadata
-from fuzzer.storage.crash_parser import (
-    CrashParser,
-    CrashReport,
-    PythonTracebackCrashParser,
-)
+from fuzzer.observers.input import ParsedCrash
 
 
 def _now() -> str:
@@ -19,12 +15,11 @@ def _now() -> str:
 
 
 class FuzzerDatabase:
-    def __init__(self, db_path: str | Path, crash_parser: CrashParser | None = None):
+    def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
         self._conn.row_factory = sqlite3.Row
-        self._crash_parser = crash_parser or PythonTracebackCrashParser()
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -124,19 +119,12 @@ class FuzzerDatabase:
     # Crashes
     # ------------------------------------------------------------------
 
-    def parse_crash(self, stderr: str) -> CrashReport:
-        """
-        Parse stderr traceback text into a structured crash report.
-        """
-        return self._crash_parser.parse(stderr)
-
-    def record_crash(self, data: str, stderr: str) -> bool:
+    def record_crash(self, data: str, parsed: ParsedCrash) -> bool:
         """
         Record a crash, deduplicating by (exception_type, file, line).
         Increments count and updates last_seen_at for duplicates.
         Returns True if this is a new unique crash, False if it's a duplicate.
         """
-        parsed = self.parse_crash(stderr)
         now = _now()
 
         existing = self._conn.execute(

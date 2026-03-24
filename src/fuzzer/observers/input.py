@@ -15,3 +15,16 @@ class ObservationInput:
     stderr: str
     exit_code: int
     result: Any
+
+
+@dataclass(frozen=True)
+class ParsedCrash:
+    """Structured crash metadata parsed from execution stderr/traceback."""
+
+    exception_type: str
+    exception_message: str
+    file: str
+    line: int
+    traceback: str
+    bug_category: str
+    category_source: str

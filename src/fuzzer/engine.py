@@ -100,7 +100,14 @@ class FuzzingEngine:
             )
 
             if is_crash:
-                is_new = self.db.record_crash(mutated, run_result.stderr)
+                parsed_crash = getattr(signal, "parsed_crash", None)
+                if parsed_crash is None:
+                    self.logger.log_stop_reason(
+                        "warning: crash detected but observer produced no parsed crash"
+                    )
+                    continue
+
+                is_new = self.db.record_crash(mutated, parsed_crash)
                 if is_new:
                     unique_crashes += 1
                     self.logger.log_crash(iteration, unique_crashes)

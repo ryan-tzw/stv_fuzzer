@@ -13,17 +13,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fuzzer.executors.coverage_exec.types import CoveragePayload
-from fuzzer.observers.bug_category import parse_bug_category
-from fuzzer.observers.input import ObservationInput
+from fuzzer.observers.bug_category import parse_crash
+from fuzzer.observers.input import ObservationInput, ParsedCrash
 
 
 @dataclass
 class CoverageData:
     lines: dict[str, frozenset[int]] = field(default_factory=dict)
     branches: dict[str, frozenset[tuple[int, int]]] = field(default_factory=dict)
-    bug_category: str = "unknown"
-    bug_category_source: str = "fallback"
-    parsed_traceback: str = ""
+    parsed_crash: ParsedCrash | None = None
 
     def total_lines(self) -> int:
         return sum(len(v) for v in self.lines.values())
@@ -106,17 +104,11 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
     def observe(self, execution: ObservationInput) -> CoverageData:
         """Parse coverage payload from an ObservationInput."""
         coverage_dict = execution.result
-        bug_info = parse_bug_category(execution.stderr)
+        parsed_crash = parse_crash(execution.stderr)
         if not isinstance(coverage_dict, dict):
-            return CoverageData(
-                bug_category=bug_info.category,
-                bug_category_source=bug_info.source,
-                parsed_traceback=bug_info.traceback_text,
-            )
+            return CoverageData(parsed_crash=parsed_crash)
         result = self.observe_payload(coverage_dict)
-        result.bug_category = bug_info.category
-        result.bug_category_source = bug_info.source
-        result.parsed_traceback = bug_info.traceback_text
+        result.parsed_crash = parsed_crash
         return result
 
     def observe_payload(self, coverage_dict: CoveragePayload) -> CoverageData:
