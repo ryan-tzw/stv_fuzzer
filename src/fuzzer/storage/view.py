@@ -49,10 +49,30 @@ def show_corpus(conn: sqlite3.Connection, show_data: bool = False) -> None:
 def show_crashes(
     conn: sqlite3.Connection, show_traceback: bool = False, show_data: bool = False
 ) -> None:
+    crash_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(crashes)").fetchall()
+    }
+    has_category = "bug_category" in crash_columns
+
+    select_cols = [
+        "id",
+        "exception_type",
+        "exception_message",
+        "file",
+        "line",
+        "count",
+        "first_seen_at",
+        "last_seen_at",
+        "traceback",
+        "data",
+    ]
+    if has_category:
+        select_cols.extend(["bug_category", "category_source"])
+
+    select_sql = ", ".join(select_cols)
     rows = conn.execute(
-        """
-        SELECT id, exception_type, exception_message, file, line,
-               count, first_seen_at, last_seen_at, traceback, data
+        f"""
+        SELECT {select_sql}
         FROM crashes
         ORDER BY count DESC
         """
@@ -64,6 +84,10 @@ def show_crashes(
             f"  [{row['id']:>4}] {row['exception_type']}: {textwrap.shorten(row['exception_message'], width=60, placeholder='...')}"
         )
         print(f"         file : {row['file']}:{row['line']}")
+        if has_category:
+            print(
+                f"         category: {row['bug_category']} (source={row['category_source']})"
+            )
         print(
             f"         count: {row['count']}  first={row['first_seen_at']}  last={row['last_seen_at']}"
         )

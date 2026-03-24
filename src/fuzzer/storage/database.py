@@ -44,6 +44,8 @@ class FuzzerDatabase:
                 file                TEXT    NOT NULL,
                 line                INTEGER NOT NULL,
                 traceback           TEXT    NOT NULL,
+                bug_category        TEXT    NOT NULL DEFAULT 'unknown',
+                category_source     TEXT    NOT NULL DEFAULT 'traceback_fallback',
                 data                TEXT    NOT NULL,
                 count               INTEGER NOT NULL DEFAULT 1,
                 first_seen_at       TEXT    NOT NULL,
@@ -53,7 +55,22 @@ class FuzzerDatabase:
             CREATE UNIQUE INDEX IF NOT EXISTS crashes_dedup
                 ON crashes (exception_type, file, line);
         """)
+        self._ensure_crash_category_columns()
         self._conn.commit()
+
+    def _ensure_crash_category_columns(self) -> None:
+        """Backfill crash category columns for pre-migration databases."""
+        cursor = self._conn.execute("PRAGMA table_info(crashes)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        required_columns = {
+            "bug_category": "TEXT NOT NULL DEFAULT 'unknown'",
+            "category_source": "TEXT NOT NULL DEFAULT 'traceback_fallback'",
+        }
+
+        for col, ddl in required_columns.items():
+            if col not in existing_columns:
+                self._conn.execute(f"ALTER TABLE crashes ADD COLUMN {col} {ddl}")
 
     # ------------------------------------------------------------------
     # Corpus
@@ -138,8 +155,20 @@ class FuzzerDatabase:
             self._conn.execute(
                 """
                 INSERT INTO crashes
-                    (exception_type, exception_message, file, line, traceback, data, count, first_seen_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    (
+                        exception_type,
+                        exception_message,
+                        file,
+                        line,
+                        traceback,
+                        bug_category,
+                        category_source,
+                        data,
+                        count,
+                        first_seen_at,
+                        last_seen_at
+                    )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
                     parsed.exception_type,
@@ -147,6 +176,8 @@ class FuzzerDatabase:
                     parsed.file,
                     parsed.line,
                     parsed.traceback,
+                    parsed.bug_category,
+                    parsed.category_source,
                     data,
                     now,
                     now,
