@@ -1,0 +1,15 @@
+{
+  "name": "ipv6",
+  "start_symbol": "ipv6",
+  "tokens": {
+    "IPV6_ADDRESS": {
+      "pattern": "[0-9A-Fa-f:.]{2,}",
+      "generator": "ipv6_address"
+    }
+  },
+  "productions": {
+    "ipv6": [
+      [{"symbol": "IPV6_ADDRESS"}]
+    ]
+  }
+}

@@ -1,3 +1,14 @@
-from .python_coverage import CoverageData, PythonCoverageObserver
+from .blackbox import BlackboxObservation, BlackboxObserver
+from .python_coverage import (
+    CoverageData,
+    InProcessCoverageObserver,
+    PythonCoverageObserver,
+)
 
-__all__ = ["PythonCoverageObserver", "CoverageData"]
+__all__ = [
+    "BlackboxObservation",
+    "BlackboxObserver",
+    "CoverageData",
+    "InProcessCoverageObserver",
+    "PythonCoverageObserver",
+]

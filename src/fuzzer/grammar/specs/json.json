@@ -1,0 +1,61 @@
+{
+  "name": "json",
+  "start_symbol": "json",
+  "skip_pattern": "\\s*",
+  "depth_limited_choices": {
+    "value": [2, 3, 4, 5, 6],
+    "object": [0],
+    "array": [0],
+    "members": [0],
+    "elements": [0]
+  },
+  "tokens": {
+    "STRING_TOKEN": {
+      "pattern": "\"(?:\\\\.|[^\"\\\\])*\"",
+      "generator": "json_string"
+    },
+    "NUMBER_TOKEN": {
+      "pattern": "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?",
+      "generator": "json_number"
+    }
+  },
+  "productions": {
+    "json": [
+      [{"symbol": "value"}]
+    ],
+    "value": [
+      [{"symbol": "object"}],
+      [{"symbol": "array"}],
+      [{"symbol": "string"}],
+      [{"symbol": "number"}],
+      [{"literal": "true"}],
+      [{"literal": "false"}],
+      [{"literal": "null"}]
+    ],
+    "object": [
+      [{"literal": "{"}, {"literal": "}"}],
+      [{"literal": "{"}, {"symbol": "members"}, {"literal": "}"}]
+    ],
+    "members": [
+      [{"symbol": "pair"}],
+      [{"symbol": "pair"}, {"literal": ","}, {"symbol": "members"}]
+    ],
+    "pair": [
+      [{"symbol": "string"}, {"literal": ":"}, {"symbol": "value"}]
+    ],
+    "array": [
+      [{"literal": "["}, {"literal": "]"}],
+      [{"literal": "["}, {"symbol": "elements"}, {"literal": "]"}]
+    ],
+    "elements": [
+      [{"symbol": "value"}],
+      [{"symbol": "value"}, {"literal": ","}, {"symbol": "elements"}]
+    ],
+    "string": [
+      [{"symbol": "STRING_TOKEN"}]
+    ],
+    "number": [
+      [{"symbol": "NUMBER_TOKEN"}]
+    ]
+  }
+}

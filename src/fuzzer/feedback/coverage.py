@@ -15,6 +15,7 @@ class FeedbackResult:
 
     add_to_corpus: bool
     is_crash: bool
+    crash_text: str = ""
 
 
 class CoverageFeedback:
@@ -31,7 +32,9 @@ class CoverageFeedback:
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_branches: set[tuple[str, tuple[int, int]]] = set()
 
-    def evaluate(self, signal: CoverageData, stderr: str = "") -> FeedbackResult:
+    def evaluate(
+        self, signal: CoverageData, stdout: str = "", stderr: str = ""
+    ) -> FeedbackResult:
         """
         Evaluate an execution's signals and return a decision.
 
@@ -42,6 +45,7 @@ class CoverageFeedback:
         Returns:
             FeedbackResult indicating whether to add to corpus and/or record a crash.
         """
+        del stdout
         is_crash = "ERR:" in stderr
 
         is_new_coverage = self._has_new_coverage(signal)
@@ -51,6 +55,7 @@ class CoverageFeedback:
         return FeedbackResult(
             add_to_corpus=is_new_coverage,
             is_crash=is_crash,
+            crash_text=stderr if is_crash else "",
         )
 
     def _has_new_coverage(self, signal: CoverageData) -> bool:

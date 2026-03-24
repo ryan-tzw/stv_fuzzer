@@ -1,5 +1,5 @@
 from .corpus import CorpusManager, SeedInput, SeedMetadata
-from .mutator import Mutator
+from .mutator import MutantCandidate, Mutator
 from .scheduler import FastScheduler, RandomScheduler, Scheduler
 
 __all__ = [
@@ -7,6 +7,7 @@ __all__ = [
     "SeedInput",
     "SeedMetadata",
     "Mutator",
+    "MutantCandidate",
     "Scheduler",
     "RandomScheduler",
     "FastScheduler",

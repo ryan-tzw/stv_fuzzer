@@ -1,0 +1,73 @@
+{
+  "name": "cidrize",
+  "start_symbol": "cidr_input",
+  "tokens": {
+    "OCTET": {
+      "pattern": "[0-9]{1,3}",
+      "generator": "ipv4_octet"
+    },
+    "PREFIX": {
+      "pattern": "(?:[0-9]|[1-2][0-9]|3[0-2])",
+      "generator": "cidr_prefix"
+    },
+    "SHORT_END": {
+      "pattern": "[0-9]{1,3}",
+      "generator": "short_range_end"
+    },
+    "BRACKET_RANGE": {
+      "pattern": "\\[[0-9]-[0-9]\\]",
+      "generator": "bracket_range"
+    },
+    "BRACKET_SET": {
+      "pattern": "\\[[0-9]+\\]",
+      "generator": "bracket_set"
+    }
+  },
+  "productions": {
+    "cidr_input": [
+      [{"symbol": "ipv4"}],
+      [{"symbol": "ipv4"}, {"literal": "/"}, {"symbol": "PREFIX"}],
+      [{"symbol": "ipv4"}, {"literal": "-"}, {"symbol": "ipv4"}],
+      [
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "-"},
+        {"symbol": "SHORT_END"}
+      ],
+      [
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "BRACKET_RANGE"}
+      ],
+      [
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "BRACKET_SET"}
+      ]
+    ],
+    "ipv4": [
+      [
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"}
+      ]
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "ipv4",
+  "start_symbol": "ipv4",
+  "tokens": {
+    "OCTET": {
+      "pattern": "[0-9]{1,3}",
+      "generator": "ipv4_octet"
+    }
+  },
+  "productions": {
+    "ipv4": [
+      [
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"},
+        {"literal": "."},
+        {"symbol": "OCTET"}
+      ]
+    ]
+  }
+}

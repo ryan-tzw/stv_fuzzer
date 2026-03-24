@@ -93,10 +93,18 @@ class InProcessCoverageObserver:
     def __init__(self, project_dir: str | Path):
         self.project_dir = Path(project_dir).resolve()
 
-    def observe(self, coverage_dict: dict) -> CoverageData:
+    def observe(
+        self,
+        coverage_dict: dict,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        input_data: str = "",
+    ) -> CoverageData:
         """
         Parse *coverage_dict* and return coverage scoped to *project_dir*.
         """
+        del stdout, stderr, input_data
         result = CoverageData()
 
         for file_path, file_data in coverage_dict.items():

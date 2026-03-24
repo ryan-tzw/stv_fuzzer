@@ -2,12 +2,14 @@
 SQLite-backed storage for corpus seeds and crash reports.
 """
 
+import json
 import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.core.corpus import SeedInput, SeedMetadata
+from fuzzer.grammar import DerivationNode
 
 
 def _now() -> str:
@@ -27,6 +29,7 @@ class FuzzerDatabase:
             CREATE TABLE IF NOT EXISTS corpus (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 data            TEXT    NOT NULL,
+                tree_json       TEXT,
                 times_picked    INTEGER NOT NULL DEFAULT 0,
                 times_fuzzed    INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT    NOT NULL
@@ -48,6 +51,11 @@ class FuzzerDatabase:
             CREATE UNIQUE INDEX IF NOT EXISTS crashes_dedup
                 ON crashes (exception_type, file, line);
         """)
+        corpus_columns = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(corpus)")
+        }
+        if "tree_json" not in corpus_columns:
+            self._conn.execute("ALTER TABLE corpus ADD COLUMN tree_json TEXT")
         self._conn.commit()
 
     # ------------------------------------------------------------------
@@ -58,11 +66,12 @@ class FuzzerDatabase:
         """Persist a new seed to the corpus table."""
         self._conn.execute(
             """
-            INSERT INTO corpus (data, times_picked, times_fuzzed, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO corpus (data, tree_json, times_picked, times_fuzzed, created_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
-                seed.data,
+                seed.raw_data,
+                _tree_to_json(seed.tree),
                 seed.metadata.times_picked,
                 seed.metadata.times_fuzzed,
                 _now(),
@@ -74,9 +83,15 @@ class FuzzerDatabase:
         """Overwrite all corpus rows with the current in-memory seed state (for resume)."""
         self._conn.execute("DELETE FROM corpus")
         self._conn.executemany(
-            "INSERT INTO corpus (data, times_picked, times_fuzzed, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO corpus (data, tree_json, times_picked, times_fuzzed, created_at) VALUES (?, ?, ?, ?, ?)",
             [
-                (s.data, s.metadata.times_picked, s.metadata.times_fuzzed, _now())
+                (
+                    s.raw_data,
+                    _tree_to_json(s.tree),
+                    s.metadata.times_picked,
+                    s.metadata.times_fuzzed,
+                    _now(),
+                )
                 for s in seeds
             ],
         )
@@ -85,11 +100,12 @@ class FuzzerDatabase:
     def load_seeds(self) -> list[SeedInput]:
         """Load all corpus rows as SeedInput objects."""
         rows = self._conn.execute(
-            "SELECT data, times_picked, times_fuzzed FROM corpus ORDER BY id"
+            "SELECT data, tree_json, times_picked, times_fuzzed FROM corpus ORDER BY id"
         ).fetchall()
         return [
             SeedInput(
-                data=row["data"],
+                raw_data=row["data"],
+                tree=_tree_from_json(row["tree_json"]),
                 metadata=SeedMetadata(
                     times_picked=row["times_picked"],
                     times_fuzzed=row["times_fuzzed"],
@@ -184,3 +200,15 @@ class FuzzerDatabase:
 
     def close(self) -> None:
         self._conn.close()
+
+
+def _tree_to_json(tree: DerivationNode | None) -> str | None:
+    if tree is None:
+        return None
+    return json.dumps(tree.to_dict(), separators=(",", ":"))
+
+
+def _tree_from_json(payload: str | None) -> DerivationNode | None:
+    if not payload:
+        return None
+    return DerivationNode.from_dict(json.loads(payload))

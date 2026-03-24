@@ -15,7 +15,7 @@ def main() -> int:
     parser.add_argument("project_dir", type=Path, help="Path to target uv directory")
     parser.add_argument(
         "harness",
-        help=f"Harness name (resolved from {HARNESSES_DIR})",
+        help=f"Target profile / harness name (Python harnesses live in {HARNESSES_DIR})",
     )
     parser.add_argument(
         "corpus",
