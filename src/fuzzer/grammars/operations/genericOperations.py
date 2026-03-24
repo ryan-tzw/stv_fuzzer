@@ -106,8 +106,8 @@ class GenericGrammarOperations(GrammarOperations):
     for grammar-specific behavior.
     """
 
-    def __init__(self, rng_seed: int | None = None):
-        super().__init__(rng_seed=rng_seed)
+    def __init__(self, rng_seed: int | None = None, validity_mode: int = 0):
+        super().__init__(rng_seed=rng_seed, validity_mode=validity_mode)
 
         # Generic token operations
         self.mutate_numeric = MutateNumeric()
@@ -145,6 +145,7 @@ class GenericGrammarOperations(GrammarOperations):
         - Numeric-looking leaves (all digits/dots) → numeric mutation
         - Hex-looking (0-9a-fA-F) → hex mutation
         - Otherwise → string mutation
+        - In malformed modes, more aggressive corruption applied
         """
         # Find all leaf nodes with values
         leaf_nodes = [
@@ -159,6 +160,15 @@ class GenericGrammarOperations(GrammarOperations):
         node = self.rng.choice(leaf_nodes)
         value_str = str(node.value).strip()
 
+        # Apply mode-aware corruption
+        if self.should_produce_malformed():
+            # Aggressive corruption: random character injection or replacement
+            if self.rng.random() < 0.5:
+                node.value = self._corrupt_value(value_str)
+            else:
+                node.value = self.mutate_string.mutate(value_str, self.rng)
+            return True
+
         # Classify and apply appropriate mutation
         if self._is_numeric(value_str):
             node.value = self.mutate_numeric.mutate(value_str, self.rng)
@@ -171,6 +181,22 @@ class GenericGrammarOperations(GrammarOperations):
         # Default to string mutation
         node.value = self.mutate_string.mutate(value_str, self.rng)
         return True
+
+    def _corrupt_value(self, text: str) -> str:
+        """Aggressively corrupt a value by random injection/replacement."""
+        if not text:
+            return "CORRUPT"
+        charset = string.ascii_letters + string.digits + string.punctuation
+        if self.rng.random() < 0.5:
+            # Random insertion
+            pos = self.rng.randrange(len(text) + 1)
+            char = self.rng.choice(charset)
+            return text[:pos] + char + text[pos:]
+        else:
+            # Random replacement
+            pos = self.rng.randrange(len(text))
+            char = self.rng.choice(charset)
+            return text[:pos] + char + text[pos + 1 :]
 
     def _is_numeric(self, text: str) -> bool:
         """Check if text looks like a number (int or float)."""

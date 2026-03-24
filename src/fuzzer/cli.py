@@ -56,6 +56,13 @@ def main() -> int:
         default=1,
         help=f"Number of stacked mutations per generated input (default: {FuzzerConfig.mutate_depth})",
     )
+    parser.add_argument(
+        "--validity",
+        type=int,
+        choices=[0, 1, 2],
+        default=0,
+        help="Validity mode: 0=well-formed (default), 1=slightly-malformed, 2=heavily-malformed",
+    )
 
     # Scheduler
     parser.add_argument(
@@ -95,6 +102,8 @@ def main() -> int:
         config.grammar = args.grammar
     if args.mutate_depth is not None:
         config.mutate_depth = args.mutate_depth
+    if args.validity is not None:
+        config.validity = args.validity
     if args.scheduler is not None:
         config.scheduler = args.scheduler
     if args.energy_c is not None:

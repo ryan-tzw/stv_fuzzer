@@ -97,9 +97,11 @@ class FuzzingEngine:
             registry = get_registry()
             grammar_config = registry.get(self.config.grammar)
             if grammar_config and grammar_config.get("operations_class"):
-                ops = grammar_config["operations_class"]()
+                ops = grammar_config["operations_class"](
+                    validity_mode=self.config.validity
+                )
             else:
-                ops = GenericGrammarOperations()
+                ops = GenericGrammarOperations(validity_mode=self.config.validity)
             return Mutator(strategy=GrammarStrategy(parser, ops))
         except Exception:
             return Mutator(strategy=BlindRandomStrategy())

@@ -12,27 +12,56 @@ from .grammarOperation import (
     AstMutationOperation,
     TokenMutationOperation,
     ShuffleChildren,
+    ValidityMode,
 )
 from .genericOperations import GenericGrammarOperations
 
 
 # IP-Specific Token Operations
 class MutateOctet(TokenMutationOperation):
-    """Mutates an IPv4 octet (0-255) with optional edge-case injection."""
+    """Mutates an IPv4 octet (0-255) with optional edge-case injection and validity control."""
+
+    def __init__(self, validity_mode: int = 0):
+        self.validity_mode = ValidityMode(validity_mode)
 
     def mutate(self, text: str, rng: random.Random) -> str:
-        # 10% chance to inject a classic edge-case value
-        if rng.random() < 0.10:
-            return str(rng.choice([0, 255]))
         try:
             value = int(text, 10)
         except Exception:
             value = rng.randint(0, 255)
 
-        delta = rng.randint(-50, 50)
-        if delta == 0:
-            delta = 1
-        value = max(0, min(255, value + delta))
+        # Validity-aware mutation
+        if self.validity_mode == ValidityMode.WELL_FORMED:
+            # Classic edge-case values
+            if rng.random() < 0.10:
+                return str(rng.choice([0, 255]))
+            delta = rng.randint(-50, 50)
+            if delta == 0:
+                delta = 1
+            value = max(0, min(255, value + delta))
+        elif self.validity_mode == ValidityMode.SLIGHTLY_MALFORMED:
+            # 40% chance to generate invalid octet (256-512)
+            if rng.random() < 0.4:
+                value = rng.randint(256, 512)
+            else:
+                delta = rng.randint(-50, 50)
+                if delta == 0:
+                    delta = 1
+                value = max(0, min(255, value + delta))
+        else:  # HEAVILY_MALFORMED
+            # 70% chance to generate extreme values
+            if rng.random() < 0.7:
+                value = rng.choice(
+                    [
+                        rng.randint(256, 9999),
+                        rng.randint(-1000, -1),
+                    ]
+                )
+            else:
+                delta = rng.randint(-50, 50)
+                if delta == 0:
+                    delta = 1
+                value = max(0, min(255, value + delta))
 
         # Preserve width sometimes so leading-zero style survives
         if len(text) > 1 and text.startswith("0"):
@@ -45,22 +74,53 @@ class MutateOctet(TokenMutationOperation):
 
 
 class MutateH16(TokenMutationOperation):
-    """Mutates an IPv6 16-bit hex block with case and padding preservation."""
+    """Mutates an IPv6 16-bit hex block with case and padding preservation and validity control."""
+
+    def __init__(self, validity_mode: int = 0):
+        self.validity_mode = ValidityMode(validity_mode)
 
     def mutate(self, text: str, rng: random.Random) -> str:
-        if rng.random() < 0.10:
-            return rng.choice(["0", "ffff"])
+        # Validity-aware mutation
+        if self.validity_mode == ValidityMode.WELL_FORMED:
+            if rng.random() < 0.10:
+                return rng.choice(["0", "ffff"])
 
-        try:
-            value = int(text, 16)
-        except Exception:
-            value = rng.randint(0, 0xFFFF)
+            try:
+                value = int(text, 16)
+            except Exception:
+                value = rng.randint(0, 0xFFFF)
 
-        delta = rng.randint(-0x1000, 0x1000)
-        if delta == 0:
-            delta = 1
+            delta = rng.randint(-0x1000, 0x1000)
+            if delta == 0:
+                delta = 1
 
-        value = (value + delta) % 0x10000
+            value = (value + delta) % 0x10000
+        elif self.validity_mode == ValidityMode.SLIGHTLY_MALFORMED:
+            # 30% chance to generate invalid hex value
+            if rng.random() < 0.3:
+                value = rng.randint(0x10000, 0xFFFFFF)
+            else:
+                try:
+                    value = int(text, 16)
+                except Exception:
+                    value = rng.randint(0, 0xFFFF)
+                delta = rng.randint(-0x1000, 0x1000)
+                if delta == 0:
+                    delta = 1
+                value = (value + delta) % 0x10000
+        else:  # HEAVILY_MALFORMED
+            # 70% chance to generate extreme hex value
+            if rng.random() < 0.7:
+                value = rng.randint(0x10000, 0xFFFFFFFF)
+            else:
+                try:
+                    value = int(text, 16)
+                except Exception:
+                    value = rng.randint(0, 0xFFFF)
+                delta = rng.randint(-0x1000, 0x1000)
+                if delta == 0:
+                    delta = 1
+                value = (value + delta) % 0x10000
 
         out = format(value, "x")
         if text.isupper():
@@ -156,100 +216,182 @@ class ReorderMovableChildren(AstMutationOperation):
         return True
 
 
+# IP-Specific Structure Operations
 class NormalizeIpv6(AstMutationOperation):
     """
     Either expands a compressed IPv6 (with ::) into full form
     or compresses the longest zero-run into ::.
     """
 
+    def _is_zero_h16(self, value: str) -> bool:
+        """Treat '0', '00', '0000', etc. as zero (int(value, 16) == 0)."""
+        if not value:
+            return False
+        try:
+            return int(value, 16) == 0
+        except ValueError:
+            return False
+
+    def _slot_count(self, children: list[AstNode]) -> int:
+        """Each H16 = 1 slot, each embedded Ipv4 = 2 slots."""
+        count = 0
+        for c in children:
+            if c.type == "H16":
+                count += 1
+            elif c.type == "Ipv4":
+                count += 2
+        return count
+
     def mutate(self, node: AstNode, rng: random.Random) -> bool:
         if not node.type.startswith("Ipv6"):
             return False
-        h16_nodes = [child for child in node.children if child.type == "H16"]
-        has_double_colon = any(child.type == "DoubleColon" for child in node.children)
-
-        # Expand (::) → full 8-block form
+        children = node.children
+        has_double_colon = any(c.type == "DoubleColon" for c in children)
         if has_double_colon and rng.random() < 0.5:
-            missing = 8 - len(h16_nodes)
+            try:
+                dc_idx = next(
+                    i for i, c in enumerate(children) if c.type == "DoubleColon"
+                )
+            except StopIteration:
+                return False
+            before = children[:dc_idx]
+            after = children[dc_idx + 1 :]
+            slots_before = self._slot_count(before)
+            slots_after = self._slot_count(after)
+            missing = 8 - (slots_before + slots_after)
             if missing <= 0:
                 return False
-            expanded = []
-            for child in node.children:
-                if child.type == "DoubleColon":
-                    expanded.extend([AstNode("H16", value="0") for _ in range(missing)])
-                else:
-                    expanded.append(child)
-
+            zeros = [AstNode("H16", value="0") for _ in range(missing)]
+            new_children = before + zeros + after
             node.type = "Ipv6Full"
-            node.children = expanded
+            node.children = new_children
             return True
-        # Compress: find longest run of "0" and replace with ::
         else:
-            values = [child.value for child in node.children if child.type == "H16"]
+            # Find longest run of zero H16s (works even with Ipv4 at the end)
             best_start = -1
             best_len = 0
             i = 0
-            while i < len(values):
-                if values[i] == "0":
+            while i < len(children):
+                if children[i].type == "H16" and self._is_zero_h16(children[i].value):
                     j = i
-                    while j < len(values) and values[j] == "0":
+                    while (
+                        j < len(children)
+                        and children[j].type == "H16"
+                        and self._is_zero_h16(children[j].value)
+                    ):
                         j += 1
-                    if (j - i) > best_len:
-                        best_len = j - i
+                    run_len = j - i
+                    if run_len > best_len:
+                        best_len = run_len
                         best_start = i
                     i = j
                 else:
                     i += 1
             if best_len < 2:
-                return False  # no worthwhile compression
-
+                return False
             new_children = []
             idx = 0
-            while idx < len(values):
+            while idx < len(children):
                 if idx == best_start:
                     new_children.append(AstNode("DoubleColon"))
                     idx += best_len
                 else:
-                    new_children.append(AstNode("H16", value=values[idx]))
+                    new_children.append(children[idx])
                     idx += 1
             node.type = "Ipv6Compressed"
             node.children = new_children
             return True
 
 
+class BreakIpv6Compression(AstMutationOperation):
+    """Malform :: compression by removing it or duplicating it (invalid IPv6)."""
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if not node.type.startswith("Ipv6"):
+            return False
+        children = node.children
+        double_colon_indices = [
+            i for i, c in enumerate(children) if c.type == "DoubleColon"
+        ]
+
+        if not double_colon_indices:
+            return False
+
+        if rng.random() < 0.5:
+            # Remove the :: (creates invalid IPv6 with gaps)
+            idx = rng.choice(double_colon_indices)
+            del children[idx]
+            return True
+        else:
+            # Duplicate :: (multiple :: is invalid)
+            idx = rng.choice(double_colon_indices)
+            children.insert(idx, AstNode("DoubleColon"))
+            return True
+
+
+class InjectInvalidOctet(AstMutationOperation):
+    """Inject an invalid octet into IPv4 for malformed mode."""
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Ipv4":
+            return False
+        octet_nodes = [
+            i for i, child in enumerate(node.children) if child.type == "Octet"
+        ]
+        if not octet_nodes:
+            return False
+        idx = rng.choice(octet_nodes)
+        # Set to out-of-range value
+        node.children[idx].value = str(rng.randint(256, 999))
+        return True
+
+
 # IP Grammar Engine
 class IpGrammarOperations(GenericGrammarOperations):
     """IP-specific mutation engine extending generic operations."""
 
-    def __init__(self, rng_seed: int | None = None):
-        super().__init__(rng_seed)
+    def __init__(self, rng_seed: int | None = None, validity_mode: int = 0):
+        super().__init__(rng_seed=rng_seed, validity_mode=validity_mode)
 
         # Token Mutation
-        self.mutate_octet = MutateOctet()
-        self.mutate_h16 = MutateH16()
+        self.mutate_octet = MutateOctet(validity_mode=validity_mode)
+        self.mutate_h16 = MutateH16(validity_mode=validity_mode)
 
         # Structural Mutation
         self.shuffle_op = ShuffleChildren()
         self.toggle_version_op = ToggleIpVersion()
         self.reorder_h16_op = ReorderMovableChildren({"H16"})
         self.normalize_ipv6_op = NormalizeIpv6()
+        self.break_ipv6_op = BreakIpv6Compression()
+        self.inject_invalid_octet_op = InjectInvalidOctet()
 
     # Structure Mutation Hook
     def apply_structure_mutation(self, root: AstNode) -> bool:
         """
         Collect all possible structural actions for every node,
         shuffle them, and execute the first one that succeeds.
+        In malformed modes, prioritize malforming operations.
         """
         actions: list[Callable[[], bool]] = []
 
         for node, _, _ in self.iter_nodes(root):
             if node.type == "Ipv4":
                 actions.append(lambda n=node: self.shuffle_op.mutate(n, self.rng))
+                # Add invalid octet injection for malformed modes
+                if self.validity_mode != ValidityMode.WELL_FORMED:
+                    actions.append(
+                        lambda n=node: self.inject_invalid_octet_op.mutate(n, self.rng)
+                    )
             if node.type in {"Ipv6Full", "Ipv6Compressed"}:
                 actions.append(lambda n=node: self.reorder_h16_op.mutate(n, self.rng))
                 actions.append(
                     lambda n=node: self.normalize_ipv6_op.mutate(n, self.rng)
                 )
+                # Add compression breaking for malformed modes
+                if self.validity_mode != ValidityMode.WELL_FORMED:
+                    actions.append(
+                        lambda n=node: self.break_ipv6_op.mutate(n, self.rng)
+                    )
         # Always allow version toggle at the root level
         actions.append(lambda: self.toggle_version_op.mutate(root, self.rng))
 
@@ -307,7 +449,7 @@ if __name__ == "__main__":
     ]
 
     # Initialize operations (seeded for reproducibility)
-    ops = IpGrammarOperations(rng_seed=42)
+    ops = IpGrammarOperations(rng_seed=42, validity_mode=1)
 
     print("\n=== SANITY: PARSE → UNPARSE ===")
     for ip in ip_tests:
@@ -360,7 +502,7 @@ if __name__ == "__main__":
                 parser.parse(out)
                 print("Re-parse: OK")
             except Exception:
-                print("Re-parse: FAILED (expected sometimes)")
+                print("Re-parse: FAILED")
 
         except Exception as e:
             print("FAILED:", e)
@@ -382,7 +524,7 @@ if __name__ == "__main__":
                     parser.parse(out)
                     print("Re-parse: OK")
                 except Exception:
-                    print("Re-parse: FAILED (interesting case!)")
+                    print("Re-parse: FAILED")
 
         except Exception as e:
             print("FAILED:", e)
@@ -402,7 +544,7 @@ if __name__ == "__main__":
             try:
                 parser.parse(out)
             except Exception:
-                print("  -> Invalid after mutation (EXPECTED edge case)")
+                print("Re-parse: FAILEDn")
 
     except Exception as e:
         print("FAILED:", e)

@@ -14,6 +14,7 @@ from .grammarOperation import (
     AstMutationOperation,
     TokenMutationOperation,
     ShuffleChildren,
+    ValidityMode,
 )
 from .genericOperations import GenericGrammarOperations
 
@@ -28,7 +29,7 @@ class JsonAstGenerator:
     def __init__(
         self,
         max_new_depth: int = 1,
-        max_items: int = 3,
+        max_items: int = 10,
         num_range: tuple[int, int] = (-9999, 9999),
         type_weights: tuple[int, ...] = (
             4,
@@ -114,40 +115,100 @@ class JsonAstGenerator:
 
 # JSON Token Operations
 class MutateNumber(TokenMutationOperation):
-    """Mutates a numeric token string (int or float)."""
+    """Mutates a numeric token string (int or float) with validity control."""
 
     def __init__(
         self,
         delta_float_range: tuple[float, float] = (-100.0, 100.0),
         delta_int_range: tuple[int, int] = (-100, 100),
         fallback_range: tuple[int, int] = (-9999, 9999),
+        validity_mode: int = 0,
     ):
         self.delta_float_range = delta_float_range
         self.delta_int_range = delta_int_range
         self.fallback_range = fallback_range
+        self.validity_mode = ValidityMode(validity_mode)
 
     def mutate(self, text: str, rng: random.Random) -> str:
-        try:
-            if any(ch in text for ch in ".eE"):
-                value = float(text)
-                delta = rng.uniform(*self.delta_float_range)
-                if abs(delta) < 1e-9:
-                    delta = 1.0
-                return format(value + delta, ".12g")
+        if self.validity_mode == ValidityMode.WELL_FORMED:
+            try:
+                if any(ch in text for ch in ".eE"):
+                    value = float(text)
+                    delta = rng.uniform(*self.delta_float_range)
+                    if abs(delta) < 1e-9:
+                        delta = 1.0
+                    return format(value + delta, ".12g")
+                else:
+                    value = int(text)
+                    delta = rng.randint(*self.delta_int_range)
+                    if delta == 0:
+                        delta = 1
+                    return str(value + delta)
+            except Exception:
+                return str(rng.randint(*self.fallback_range))
+        elif self.validity_mode == ValidityMode.SLIGHTLY_MALFORMED:
+            # 30% chance to generate invalid number format
+            if rng.random() < 0.3:
+                return rng.choice(
+                    [
+                        "1.2.3",  # Multiple dots
+                        "1e2e3",  # Multiple exponents
+                        "1e",  # Incomplete exponent
+                        ".5e+",  # Incomplete exponent
+                    ]
+                )
             else:
-                value = int(text)
-                delta = rng.randint(*self.delta_int_range)
-                if delta == 0:
-                    delta = 1
-                return str(value + delta)
-        except Exception:
-            return str(rng.randint(*self.fallback_range))
+                try:
+                    if any(ch in text for ch in ".eE"):
+                        value = float(text)
+                        delta = rng.uniform(*self.delta_float_range)
+                        if abs(delta) < 1e-9:
+                            delta = 1.0
+                        return format(value + delta, ".12g")
+                    else:
+                        value = int(text)
+                        delta = rng.randint(*self.delta_int_range)
+                        if delta == 0:
+                            delta = 1
+                        return str(value + delta)
+                except Exception:
+                    return str(rng.randint(*self.fallback_range))
+        else:  # HEAVILY_MALFORMED
+            # 60% chance to generate extreme invalid numbers
+            if rng.random() < 0.6:
+                return rng.choice(
+                    [
+                        "NaN",
+                        "Infinity",
+                        "1.2.3.4.5",
+                        "1e999e999",
+                        "...",
+                        "---",
+                        "++1",
+                    ]
+                )
+            else:
+                try:
+                    if any(ch in text for ch in ".eE"):
+                        value = float(text)
+                        delta = rng.uniform(*self.delta_float_range)
+                        if abs(delta) < 1e-9:
+                            delta = 1.0
+                        return format(value + delta, ".12g")
+                    else:
+                        value = int(text)
+                        delta = rng.randint(*self.delta_int_range)
+                        if delta == 0:
+                            delta = 1
+                        return str(value + delta)
+                except Exception:
+                    return str(rng.randint(*self.fallback_range))
 
 
 class EscapeString(TokenMutationOperation):
-    """Inject random JSON escapes into a string value."""
+    """Inject random JSON escapes into a string value with validity control."""
 
-    def __init__(self, escapes: list[str] | None = None):
+    def __init__(self, escapes: list[str] | None = None, validity_mode: int = 0):
         # Default to standard JSON escapes if none provided
         self.escapes = escapes or [
             '\\"',
@@ -158,12 +219,48 @@ class EscapeString(TokenMutationOperation):
             "\\b",
             "\\f",
         ]
+        self.validity_mode = ValidityMode(validity_mode)
 
     def mutate(self, text: str, rng: random.Random) -> str:
-        tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
-        pos = rng.randrange(len(tokens) + 1)
-        tokens.insert(pos, rng.choice(self.escapes))
-        return "".join(tokens)
+        if self.validity_mode == ValidityMode.WELL_FORMED:
+            tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+            pos = rng.randrange(len(tokens) + 1)
+            tokens.insert(pos, rng.choice(self.escapes))
+            return "".join(tokens)
+        elif self.validity_mode == ValidityMode.SLIGHTLY_MALFORMED:
+            # 30% chance to inject invalid escape
+            if rng.random() < 0.3:
+                tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+                pos = rng.randrange(len(tokens) + 1)
+                invalid_escape = rng.choice(["\\x", "\\q", "\\@", "\\z"])
+                tokens.insert(pos, invalid_escape)
+                return "".join(tokens)
+            else:
+                tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+                pos = rng.randrange(len(tokens) + 1)
+                tokens.insert(pos, rng.choice(self.escapes))
+                return "".join(tokens)
+        else:  # HEAVILY_MALFORMED
+            # 60% chance to inject invalid/broken escape
+            if rng.random() < 0.6:
+                tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+                pos = rng.randrange(len(tokens) + 1)
+                invalid_escape = rng.choice(
+                    [
+                        "\\",
+                        "\\u",
+                        "\\uXXXX",
+                        "\\0",
+                        "\\k",
+                    ]
+                )
+                tokens.insert(pos, invalid_escape)
+                return "".join(tokens)
+            else:
+                tokens = re.findall(r'\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|.', text)
+                pos = rng.randrange(len(tokens) + 1)
+                tokens.insert(pos, rng.choice(self.escapes))
+                return "".join(tokens)
 
 
 # JSON Structure Operations
@@ -311,6 +408,50 @@ class DeepNesting(AstMutationOperation):
         return True
 
 
+class DuplicateKeyMalformed(AstMutationOperation):
+    """Create duplicate keys in an Object (invalid JSON)."""
+
+    def __init__(self, engine: Any):
+        self.engine = engine
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type != "Object" or not node.children:
+            return False
+        # Pick a pair and duplicate its key (creating invalid JSON)
+        pair_idx = rng.randrange(len(node.children))
+        pair = node.children[pair_idx]
+        if pair.type != "Pair" or not pair.children or not pair.children[0].value:
+            return False
+        # Clone the pair but keep the same key
+        dup = self.engine.clone(pair)
+        node.children.append(dup)
+        return True
+
+
+class ExtremeNestingMalformed(AstMutationOperation):
+    """Create pathologically deep nesting (for heavily malformed mode)."""
+
+    def __init__(self, engine: Any, extreme_depth: int = 50):
+        self.engine = engine
+        self.extreme_depth = extreme_depth
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        leaves = [
+            (n, p, i)
+            for n, p, i in self.engine.iter_nodes(node)
+            if p is not None and n.type in {"String", "Number", "Boolean", "Null"}
+        ]
+        if not leaves:
+            return False
+        target_node, parent, index = rng.choice(leaves)
+        new_subtree = self.engine.clone(target_node)
+        # Create extreme nesting
+        for _ in range(self.extreme_depth):
+            new_subtree = AstNode("Array", children=[new_subtree])
+        parent.children[index] = new_subtree
+        return True
+
+
 # The JSON Grammar Engine
 class JsonGrammarOperations(GenericGrammarOperations):
     """JSON-specific mutation engine extending generic operations."""
@@ -320,14 +461,15 @@ class JsonGrammarOperations(GenericGrammarOperations):
         rng_seed: int | None = None,
         max_new_depth: int = 1,
         inline_replace_depth: int = 2,
+        validity_mode: int = 0,
     ):
-        super().__init__(rng_seed=rng_seed)
+        super().__init__(rng_seed=rng_seed, validity_mode=validity_mode)
         self.inline_replace_depth = inline_replace_depth
         self.gen = JsonAstGenerator(max_new_depth)
 
         # Token Operations
-        self.mutate_number = MutateNumber()
-        self.escape_string = EscapeString()
+        self.mutate_number = MutateNumber(validity_mode=validity_mode)
+        self.escape_string = EscapeString(validity_mode=validity_mode)
 
         # Structure Operations
         self.shuffle = ShuffleChildren()
@@ -339,6 +481,8 @@ class JsonGrammarOperations(GenericGrammarOperations):
         self.arr_dup = ArrayDuplicateItem(self)
         self.swap_scalar = SwapScalar(self.gen)
         self.deep_nest = DeepNesting(self)
+        self.dup_key = DuplicateKeyMalformed(self)
+        self.extreme_nest = ExtremeNestingMalformed(self)
 
     def _safe_replace_value(self, root: AstNode) -> bool:
         """Safely replace a JSON value node with a new random JSON value."""
@@ -358,7 +502,10 @@ class JsonGrammarOperations(GenericGrammarOperations):
 
     # Structure Mutation
     def apply_structure_mutation(self, root: AstNode) -> bool:
-        """Collect & execute one successful structural action."""
+        """
+        Collect & execute one successful structural action.
+        In malformed modes, prioritize malforming operations.
+        """
         actions: list[Callable[[], bool]] = []
 
         for node, _, _ in self.iter_nodes(root):
@@ -371,6 +518,9 @@ class JsonGrammarOperations(GenericGrammarOperations):
                         lambda n=node: self.shuffle.mutate(n, self.rng),
                     ]
                 )
+                # Add malformed operations for non-well-formed modes
+                if self.validity_mode != ValidityMode.WELL_FORMED:
+                    actions.append(lambda n=node: self.dup_key.mutate(n, self.rng))
             elif node.type == "Array":
                 actions.extend(
                     [
@@ -385,6 +535,8 @@ class JsonGrammarOperations(GenericGrammarOperations):
 
         # Global actions
         actions.append(lambda: self.deep_nest.mutate(root, self.rng))
+        if self.validity_mode == ValidityMode.HEAVILY_MALFORMED:
+            actions.append(lambda: self.extreme_nest.mutate(root, self.rng))
         actions.append(lambda: self._safe_replace_value(root))
 
         self.rng.shuffle(actions)
@@ -447,7 +599,7 @@ if __name__ == "__main__":
     ]
 
     # Initialize operations
-    ops = JsonGrammarOperations(rng_seed=42)
+    ops = JsonGrammarOperations(rng_seed=42, validity_mode=1)
 
     print("\n=== SANITY: PARSE → UNPARSE ===")
     for js in json_tests:
@@ -500,7 +652,7 @@ if __name__ == "__main__":
                 parser.parse(out)
                 print("Re-parse: OK")
             except Exception:
-                print("Re-parse: FAILED (expected sometimes)")
+                print("Re-parse: FAILED")
 
         except Exception as e:
             print("FAILED:", e)
@@ -522,7 +674,7 @@ if __name__ == "__main__":
                     parser.parse(out)
                     print("Re-parse: OK")
                 except Exception:
-                    print("Re-parse: FAILED (interesting case!)")
+                    print("Re-parse: FAILED")
 
         except Exception as e:
             print("FAILED:", e)
@@ -542,7 +694,7 @@ if __name__ == "__main__":
             try:
                 parser.parse(out)
             except Exception:
-                print("  -> Invalid after mutation (EXPECTED edge case)")
+                print("Re-parse: FAILED")
 
     except Exception as e:
         print("FAILED:", e)

@@ -6,10 +6,19 @@ It supports two mutation categories: Structural mutations & Token mutations
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import IntEnum
 import random
 from typing import Callable, Iterator
 
 from ..astBuilder import AstNode
+
+
+class ValidityMode(IntEnum):
+    """Validity control for generated inputs."""
+
+    WELL_FORMED = 0  # Mostly valid inputs
+    SLIGHTLY_MALFORMED = 1  # Mix of valid and near-valid with syntax issues
+    HEAVILY_MALFORMED = 2  # Mostly invalid, syntactically incorrect
 
 
 # AST Structural Operation Interfaces
@@ -84,8 +93,9 @@ class SwapTwoChildren(AstMutationOperation):
 class GrammarOperations(ABC):
     """Shared mutation engine for ASTs."""
 
-    def __init__(self, rng_seed: int | None = None):
+    def __init__(self, rng_seed: int | None = None, validity_mode: int = 0):
         self.rng = random.Random(rng_seed)
+        self.validity_mode = ValidityMode(validity_mode)
 
     # Tree Utilities
     def clone(self, node: AstNode) -> AstNode:
@@ -158,6 +168,16 @@ class GrammarOperations(ABC):
     def is_leaf(self, node: AstNode) -> bool:
         """Check if a node has no children."""
         return not node.children
+
+    def should_produce_malformed(self) -> bool:
+        """Decide whether to produce malformed output based on validity mode."""
+        if self.validity_mode == ValidityMode.WELL_FORMED:
+            return False
+        elif self.validity_mode == ValidityMode.SLIGHTLY_MALFORMED:
+            return self.rng.random() < 0.25  # ~25% chance
+        else:  # HEAVILY_MALFORMED
+            return self.rng.random() < 0.70  # ~70% chance
+        return False
 
     # Public API
     def mutate(self, root: AstNode, structure_bias: float = 0.5) -> AstNode:

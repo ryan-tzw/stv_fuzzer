@@ -30,6 +30,7 @@ class FuzzerConfig:
     # Grammar
     grammar: str | None = None
     mutate_depth: int = 1
+    validity: int = 0  # 0=well-formed, 1=slightly-malformed, 2=heavily-malformed
 
     # Scheduler ("random" or "fast")
     scheduler: str = "fast"
