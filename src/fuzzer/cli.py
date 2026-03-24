@@ -44,6 +44,19 @@ def main() -> int:
         help=f"Time limit in seconds (-1 to disable, default: {FuzzerConfig.time_limit})",
     )
 
+    # Grammar
+    parser.add_argument(
+        "--grammar",
+        default=None,
+        help=f"Grammar for generating syntactically valid inputs and performing structure-aware mutations. (default: {FuzzerConfig.grammar})",
+    )
+    parser.add_argument(
+        "--mutate-depth",
+        type=int,
+        default=1,
+        help=f"Number of stacked mutations per generated input (default: {FuzzerConfig.mutate_depth})",
+    )
+
     # Scheduler
     parser.add_argument(
         "--scheduler",
@@ -78,6 +91,10 @@ def main() -> int:
         config.max_iterations = args.max_iterations
     if args.time_limit is not None:
         config.time_limit = args.time_limit
+    if args.grammar is not None:
+        config.grammar = args.grammar
+    if args.mutate_depth is not None:
+        config.mutate_depth = args.mutate_depth
     if args.scheduler is not None:
         config.scheduler = args.scheduler
     if args.energy_c is not None:

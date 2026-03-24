@@ -9,6 +9,8 @@ from pathlib import Path
 _PACKAGE_DIR = Path(__file__).parent
 HARNESSES_DIR = _PACKAGE_DIR / "harnesses"
 CORPUS_DIR = _PACKAGE_DIR / "core" / "corpus"
+GENERATOR_DIR = _PACKAGE_DIR / "grammars" / "generator"
+ANTLR_DIR = _PACKAGE_DIR / "grammars" / "antlr"
 
 
 @dataclass
@@ -25,6 +27,10 @@ class FuzzerConfig:
     max_iterations: int = 1000
     time_limit: int = 60  # seconds
 
+    # Grammar
+    grammar: str | None = None
+    mutate_depth: int = 1
+
     # Scheduler ("random" or "fast")
     scheduler: str = "fast"
 
@@ -39,6 +45,14 @@ class FuzzerConfig:
     @property
     def corpus_dir(self) -> Path:
         return CORPUS_DIR / self.corpus
+
+    @property
+    def generator_dir(self) -> Path:
+        return GENERATOR_DIR
+
+    @property
+    def antlr_dir(self) -> Path:
+        return ANTLR_DIR
 
     def __post_init__(self) -> None:
         self.project_dir = Path(self.project_dir).resolve()
