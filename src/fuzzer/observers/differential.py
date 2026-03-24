@@ -11,6 +11,7 @@ from typing import Any, cast
 from fuzzer.executors.base import ExecutionResult
 from fuzzer.executors.coverage_exec.types import CoveragePayload
 from fuzzer.executors.differential.composed import DifferentialResult
+from fuzzer.observers.bug_category import parse_bug_category
 from fuzzer.observers.input import ObservationInput
 from fuzzer.observers.python_coverage import CoverageData, InProcessCoverageObserver
 
@@ -27,6 +28,9 @@ class DifferentialSignal:
     exit_code_mismatch: bool
     blackbox_has_stderr: bool
     blackbox_has_traceback: bool
+    bug_category: str
+    bug_category_source: str
+    parsed_traceback: str
 
 
 class DifferentialObserver:
@@ -44,6 +48,7 @@ class DifferentialObserver:
         blackbox_exit = result.blackbox.exit_code
         whitebox_exit = result.whitebox.exit_code
         blackbox_stderr = result.blackbox.stderr or ""
+        bug_info = parse_bug_category(blackbox_stderr)
 
         return DifferentialSignal(
             whitebox_coverage=coverage,
@@ -54,6 +59,9 @@ class DifferentialObserver:
             exit_code_mismatch=blackbox_exit != whitebox_exit,
             blackbox_has_stderr=bool(blackbox_stderr.strip()),
             blackbox_has_traceback="Traceback" in blackbox_stderr,
+            bug_category=bug_info.category,
+            bug_category_source=bug_info.source,
+            parsed_traceback=bug_info.traceback_text,
         )
 
     @staticmethod
