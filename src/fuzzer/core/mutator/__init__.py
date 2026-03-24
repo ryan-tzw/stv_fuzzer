@@ -4,17 +4,22 @@ from .operations import (
     InsertRandomChar,
     MutationOperation,
     RandomiseChar,
+    AppendChar,
+    PrependChar,
 )
-from .strategies import MutationStrategy, RandomSingleStrategy
+from .strategies import MutationStrategy, BlindRandomStrategy, GrammarStrategy
 from .mutator import Mutator
 
 __all__ = [
     "Mutator",
     "MutationStrategy",
-    "RandomSingleStrategy",
+    "BlindRandomStrategy",
+    "GrammarStrategy",
     "MutationOperation",
     "RandomiseChar",
     "DeleteChar",
     "InsertRandomChar",
     "DuplicateChar",
+    "AppendChar",
+    "PrependChar",
 ]
