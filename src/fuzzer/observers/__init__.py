@@ -1,4 +1,5 @@
 from .differential import DifferentialObserver, DifferentialSignal
+from .input import ObservationInput
 from .python_coverage import (
     CoverageData,
     InProcessCoverageObserver,
@@ -10,5 +11,6 @@ __all__ = [
     "DifferentialObserver",
     "DifferentialSignal",
     "InProcessCoverageObserver",
+    "ObservationInput",
     "PythonCoverageObserver",
 ]

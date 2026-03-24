@@ -9,6 +9,7 @@ from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
 from fuzzer.core import CorpusManager
 from fuzzer.logger import FuzzerLogger
+from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
 
 
@@ -84,7 +85,14 @@ class FuzzingEngine:
             run_result = self.executor.run(mutated)
             self.corpus.record_fuzzed(seed)
 
-            signal = self.observer.observe(run_result.result)
+            signal = self.observer.observe(
+                ObservationInput(
+                    stdout=run_result.stdout,
+                    stderr=run_result.stderr,
+                    exit_code=run_result.exit_code,
+                    result=run_result.result,
+                )
+            )
             add_to_corpus = self.feedback.evaluate(signal)
             is_crash = self.crash_detector.is_crash(
                 exit_code=run_result.exit_code,

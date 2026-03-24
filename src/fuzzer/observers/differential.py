@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from fuzzer.executors.base import ExecutionResult
 from fuzzer.executors.coverage_exec.types import CoveragePayload
 from fuzzer.executors.differential.composed import DifferentialResult
+from fuzzer.observers.input import ObservationInput
 from fuzzer.observers.python_coverage import CoverageData, InProcessCoverageObserver
 
 
@@ -33,10 +35,11 @@ class DifferentialObserver:
     def __init__(self, whitebox_project_dir: str | Path):
         self._coverage_observer = InProcessCoverageObserver(whitebox_project_dir)
 
-    def observe(self, result: DifferentialResult) -> DifferentialSignal:
+    def observe(self, execution: ObservationInput) -> DifferentialSignal:
         """Build a DifferentialSignal from executor output."""
+        result = self._as_differential_result(execution.result)
         coverage_payload = self._as_coverage_payload(result.whitebox.result)
-        coverage = self._coverage_observer.observe(coverage_payload)
+        coverage = self._coverage_observer.observe_payload(coverage_payload)
 
         blackbox_exit = result.blackbox.exit_code
         whitebox_exit = result.whitebox.exit_code
@@ -58,3 +61,13 @@ class DifferentialObserver:
         if not isinstance(value, dict):
             return cast(CoveragePayload, {})
         return cast(CoveragePayload, value)
+
+    @staticmethod
+    def _as_differential_result(value: Any) -> DifferentialResult:
+        if isinstance(value, DifferentialResult):
+            return value
+        empty_exec = ExecutionResult(stdout="", stderr="", exit_code=0, result={})
+        return DifferentialResult(
+            blackbox=cast(Any, empty_exec),
+            whitebox=cast(Any, empty_exec),
+        )

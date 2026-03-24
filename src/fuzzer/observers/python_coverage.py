@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fuzzer.executors.coverage_exec.types import CoveragePayload
+from fuzzer.observers.input import ObservationInput
 
 
 @dataclass
@@ -98,7 +99,14 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
     the behaviour of :class:`PythonCoverageObserver`.
     """
 
-    def observe(self, coverage_dict: CoveragePayload) -> CoverageData:
+    def observe(self, execution: ObservationInput) -> CoverageData:
+        """Parse coverage payload from an ObservationInput."""
+        coverage_dict = execution.result
+        if not isinstance(coverage_dict, dict):
+            return CoverageData()
+        return self.observe_payload(coverage_dict)
+
+    def observe_payload(self, coverage_dict: CoveragePayload) -> CoverageData:
         """
         Parse *coverage_dict* and return coverage scoped to *project_dir*.
         """
