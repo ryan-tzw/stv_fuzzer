@@ -12,24 +12,49 @@ if str(SRC_DIR) not in sys.path:
 def main() -> int:
     from fuzzer.mutator import Mutator, build_strategy
 
-    mutator = Mutator(strategy=build_strategy("grammar_subtree"))
+    cases = [
+        ("ipv4", "192.168.0.1"),
+        ("ipv6", "2001:db8::1"),
+        ("json", '{"a":1,"b":[2,3]}'),
+    ]
+    failed = False
 
-    seed = "192.168.0.1"
-    outputs = []
-    for _ in range(10):
-        outputs.append(mutator.mutate(seed))
+    for grammar_name, seed in cases:
+        try:
+            mutator = Mutator(
+                strategy=build_strategy("grammar_subtree", grammar_name=grammar_name)
+            )
+        except Exception as exc:
+            failed = True
+            print(f"[{grammar_name}] error: failed to build strategy: {exc}")
+            print()
+            continue
 
-    unique_outputs = sorted(set(outputs))
-    print(f"seed: {seed}")
-    print(f"unique_outputs: {len(unique_outputs)}")
-    for value in unique_outputs[:10]:
-        print(value)
+        outputs = []
+        try:
+            for _ in range(10):
+                outputs.append(mutator.mutate(seed))
+        except Exception as exc:
+            failed = True
+            print(f"[{grammar_name}] error: mutation run failed: {exc}")
+            print()
+            continue
 
-    if not unique_outputs:
-        print("error: no outputs generated")
-        return 1
-    if any(not isinstance(value, str) for value in unique_outputs):
-        print("error: non-string output found")
+        unique_outputs = sorted(set(outputs))
+        print(f"[{grammar_name}] seed: {seed}")
+        print(f"[{grammar_name}] unique_outputs: {len(unique_outputs)}")
+        for value in unique_outputs[:10]:
+            print(value)
+        print()
+
+        if not unique_outputs:
+            failed = True
+            print(f"error: no outputs generated for {grammar_name}")
+        if any(not isinstance(value, str) for value in unique_outputs):
+            failed = True
+            print(f"error: non-string output found for {grammar_name}")
+
+    if failed:
         return 1
 
     return 0

@@ -1,13 +1,14 @@
 ?start: ipv6_like
 
-ipv6_like: h16 (":" h16)* "::" (h16 (":" h16)*)? ipv4_tail?
-         | "::" (h16 (":" h16)*)? ipv4_tail?
-         | h16 (":" h16){7}
-         | h16 (":" h16){1,6} ipv4_tail
+ipv6_like: full_form
+         | part_list "::" part_list?
+         | "::" part_list?
 
-ipv4_tail: ":" ipv4_like
+full_form: part ":" part (":" part)*
+part_list: part (":" part)*
 
 ipv4_like: OCTET "." OCTET "." OCTET "." OCTET
 OCTET: /[0-9]{1,3}/
-h16: HEXTET
+part: HEXTET
+    | ipv4_like
 HEXTET: /[0-9a-fA-F]{1,4}/
