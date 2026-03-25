@@ -9,6 +9,7 @@ from collections.abc import Callable
 from .operations import (
     DeleteChar,
     DuplicateChar,
+    GrammarSubtreeReplace,
     InsertRandomChar,
     MutationOperation,
     RandomiseChar,
@@ -39,8 +40,19 @@ class RandomSingleStrategy(MutationStrategy):
         return [random.choice(self.operations)()]
 
 
+class GrammarSubtreeStrategy(MutationStrategy):
+    """Apply one grammar-aware same-symbol subtree replacement mutation."""
+
+    def __init__(self, grammar_name: str = "ipv4"):
+        self.operation = GrammarSubtreeReplace(grammar_name=grammar_name)
+
+    def select(self) -> list[MutationOperation]:
+        return [self.operation]
+
+
 STRATEGY_FACTORIES: dict[str, Callable[[], MutationStrategy]] = {
     "random_single": RandomSingleStrategy,
+    "grammar_subtree": GrammarSubtreeStrategy,
 }
 
 AVAILABLE_STRATEGIES: tuple[str, ...] = tuple(STRATEGY_FACTORIES.keys())
