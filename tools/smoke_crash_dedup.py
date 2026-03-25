@@ -94,8 +94,26 @@ def main() -> int:
         assert db.record_crash("input-h", c8) is True
         assert db.record_crash("input-i", c9) is False
 
+        # 7) exception_fallback AddrFormatError: same-site variants also collapse.
+        c10 = _make_parsed_crash(
+            exception_type="netaddr.core.AddrFormatError",
+            message="invalid IPNetwork 5.114114.7.52",
+            file="netaddr/ip/__init__.py",
+            line=1045,
+            category_source="exception_fallback",
+        )
+        c11 = _make_parsed_crash(
+            exception_type="netaddr.core.AddrFormatError",
+            message="invalid IPNetwork 8585.567.79.03",
+            file="netaddr/ip/__init__.py",
+            line=1045,
+            category_source="exception_fallback",
+        )
+        assert db.record_crash("input-j", c10) is True
+        assert db.record_crash("input-k", c11) is False
+
         rows = db._conn.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()
-        _assert_equal(int(rows["n"]), 6, "crash row count after dedup scenarios")
+        _assert_equal(int(rows["n"]), 7, "crash row count after dedup scenarios")
         db.close()
 
     with tempfile.TemporaryDirectory() as temp_dir:
