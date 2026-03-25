@@ -25,7 +25,11 @@ class FuzzingEngine:
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.db = FuzzerDatabase(self.run_dir / "results.db")
-        self.corpus = CorpusManager(config.corpus_dir, self.db)
+        self.corpus = CorpusManager(
+            config.corpus_dir,
+            self.db,
+            grammar_name=config.corpus,
+        )
         runtime_components = components or build_engine_components(config)
         self.mutator = runtime_components.mutator
         self.scheduler = runtime_components.scheduler
