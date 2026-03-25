@@ -42,6 +42,7 @@ class CorpusManager:
         self.grammar_name = grammar_name
         self._db = db
         self._seeds: list[SeedInput] = []
+        self._seed_index: dict[str, SeedInput] = {}
 
     def load(self) -> None:
         """
@@ -50,18 +51,20 @@ class CorpusManager:
         If generation fails or yields no seeds, fall back to corpus_dir files.
         """
         self._seeds = self._db.load_seeds()
+        self._rebuild_index()
+        self._merge_loaded_duplicates()
 
         if not self._seeds:
             generated = self._generate_initial_seeds(count=10)
             for data in generated:
-                self._add_seed(data)
+                self._add_seed(data, persist=True)
 
         if not self._seeds:
             # Fallback — load from seed files and persist to DB
             for path in sorted(self.corpus_dir.iterdir()):
                 if path.is_file():
                     for data in self._load_seed_file(path):
-                        self._add_seed(data)
+                        self._add_seed(data, persist=True)
 
         if not self._seeds:
             raise ValueError(
@@ -79,10 +82,45 @@ class CorpusManager:
             return []
         return generated
 
-    def _add_seed(self, data: str) -> None:
+    def _add_seed(self, data: str, *, persist: bool) -> SeedInput:
+        existing = self._seed_index.get(data)
+        if existing is not None:
+            return existing
+
         seed = SeedInput(data=data)
-        self._db.save_seed(seed)
+        if persist:
+            self._db.save_seed(seed)
         self._seeds.append(seed)
+        self._seed_index[data] = seed
+        return seed
+
+    def _rebuild_index(self) -> None:
+        self._seed_index = {seed.data: seed for seed in self._seeds}
+
+    def _merge_loaded_duplicates(self) -> None:
+        if not self._seeds:
+            return
+
+        merged: dict[str, SeedInput] = {}
+        ordered_data: list[str] = []
+
+        for seed in self._seeds:
+            existing = merged.get(seed.data)
+            if existing is None:
+                merged[seed.data] = SeedInput(
+                    data=seed.data,
+                    metadata=SeedMetadata(
+                        times_picked=seed.metadata.times_picked,
+                        times_fuzzed=seed.metadata.times_fuzzed,
+                    ),
+                )
+                ordered_data.append(seed.data)
+            else:
+                existing.metadata.times_picked += seed.metadata.times_picked
+                existing.metadata.times_fuzzed += seed.metadata.times_fuzzed
+
+        self._seeds = [merged[data] for data in ordered_data]
+        self._seed_index = merged
 
     def _load_seed_file(self, path: Path) -> list[str]:
         if path.suffix.lower() != ".json":
@@ -116,10 +154,7 @@ class CorpusManager:
         Add an interesting input to the in-memory pool and persist it to the database.
         Returns the newly created SeedInput.
         """
-        seed = SeedInput(data=data)
-        self._db.save_seed(seed)
-        self._seeds.append(seed)
-        return seed
+        return self._add_seed(data, persist=True)
 
     def record_picked(self, seed: SeedInput) -> None:
         """Increment the times_picked counter for a seed."""
