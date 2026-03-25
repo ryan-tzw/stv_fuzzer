@@ -27,9 +27,15 @@ def parse_input(parser, text: str) -> ParseResult:
     return ParseResult(success=True, tree=node, errors=[])
 
 
-def _lark_to_node(obj: Tree | Token) -> Node:
+def _lark_to_node(obj: Tree | Token | None) -> Node:
     if isinstance(obj, Tree):
-        children = [_lark_to_node(child) for child in obj.children]
+        # Lark may emit None placeholders for omitted optional branches.
+        children = [
+            converted
+            for child in obj.children
+            if child is not None
+            for converted in [_lark_to_node(child)]
+        ]
         return Node(symbol=str(obj.data), children=children, text=None)
 
     if isinstance(obj, Token):
