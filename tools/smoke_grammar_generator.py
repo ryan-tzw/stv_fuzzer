@@ -1,5 +1,4 @@
 def main() -> int:
-    import random
     import sys
     from pathlib import Path
 
@@ -12,7 +11,6 @@ def main() -> int:
     from fuzzer.grammar.loader import load_parser
     from fuzzer.grammar.parser import parse_input
 
-    rng = random.Random(1337)
     cases = ("ipv4", "ipv6", "json")
     sample_count = 25
     failed = False
@@ -26,7 +24,6 @@ def main() -> int:
             for _ in range(sample_count):
                 value = generate_from_grammar(
                     grammar_name,
-                    rng=rng,
                     max_depth=8,
                 )
                 generated.append(value)
