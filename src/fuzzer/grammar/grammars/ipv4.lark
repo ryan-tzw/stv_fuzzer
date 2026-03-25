@@ -1,0 +1,4 @@
+start: ipv4
+ipv4: octet "." octet "." octet "." octet
+octet: DIGIT | DIGIT DIGIT | DIGIT DIGIT DIGIT
+DIGIT: "0".."9"
