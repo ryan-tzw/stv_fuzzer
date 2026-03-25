@@ -22,6 +22,19 @@ _TRACEBACK_BLOCK_RE = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 _FILE_LINE_RE = re.compile(r'\s*File "(.+)", line (\d+)')
+_EXCEPTION_CATEGORY_FALLBACK: dict[str, str] = {
+    "jsondecodeerror": "bonus_untracked",
+    "cidrizeerror": "bonus_untracked",
+    "invalidcidrformaterror": "invalidity",
+    "syntactic": "invalidity",
+    "semantic": "validity",
+    "validitybug": "validity",
+    "invaliditybug": "invalidity",
+    "performancebug": "performance",
+    "functionalbug": "functional",
+    "boundarybug": "boundary",
+    "reliabilitybug": "reliability",
+}
 
 
 def parse_crash(stderr: str) -> ParsedCrash:
@@ -48,6 +61,11 @@ def parse_crash(stderr: str) -> ParsedCrash:
 
     category = _extract_trigger_line_category(text) or "unknown"
     source = "trigger_line" if category != "unknown" else "traceback_fallback"
+    if category == "unknown":
+        fallback = _categorize_from_exception(exc_type, traceback_text)
+        if fallback is not None:
+            category = fallback
+            source = "exception_fallback"
 
     return ParsedCrash(
         exception_type=exc_type.strip(),
@@ -72,7 +90,7 @@ def _extract_final_bug_tuple(text: str) -> ParsedCrash | None:
         file=match.group("file").replace("\\'", "'").strip(),
         line=int(match.group("line")),
         traceback=_extract_traceback_text(text),
-        bug_category=match.group("category").strip().lower(),
+        bug_category=_normalize_category(match.group("category")),
         category_source="final_bug_count",
     )
 
@@ -81,7 +99,7 @@ def _extract_trigger_line_category(text: str) -> str | None:
     match = _TRIGGER_LINE_RE.search(text)
     if match is None:
         return None
-    return match.group(1).strip().lower()
+    return _normalize_category(match.group(1))
 
 
 def _extract_traceback_text(text: str) -> str:
@@ -91,3 +109,41 @@ def _extract_traceback_text(text: str) -> str:
 
     # Fallback: keep stderr text when no structured traceback block exists.
     return text.strip()
+
+
+def _categorize_from_exception(exc_type: str, traceback_text: str) -> str | None:
+    """
+    Infer bug category from exception naming when explicit category markers are absent.
+    """
+    candidates: list[str] = []
+
+    trimmed = exc_type.strip()
+    if trimmed:
+        candidates.append(trimmed)
+        if "." in trimmed:
+            candidates.append(trimmed.rsplit(".", 1)[-1])
+
+    lines = traceback_text.splitlines()
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        head = line.split(":", 1)[0].strip()
+        if head:
+            candidates.append(head)
+            if "." in head:
+                candidates.append(head.rsplit(".", 1)[-1])
+        break
+
+    for name in candidates:
+        key = re.sub(r"[^a-zA-Z0-9]", "", name).lower()
+        category = _EXCEPTION_CATEGORY_FALLBACK.get(key)
+        if category is not None:
+            return category
+
+    return None
+
+
+def _normalize_category(category: str) -> str:
+    key = re.sub(r"[^a-zA-Z0-9]", "", category).lower()
+    return _EXCEPTION_CATEGORY_FALLBACK.get(key, key)
