@@ -12,7 +12,6 @@ from .strategies import (
     build_strategy,
 )
 from .string.strategies import RandomSingleStrategy
-from .tree.strategies import GrammarSubtreeStrategy
 
 __all__ = [
     "Mutator",
@@ -21,7 +20,6 @@ __all__ = [
     "build_strategy",
     "MutationStrategy",
     "RandomSingleStrategy",
-    "GrammarSubtreeStrategy",
     "MutationOperation",
     "RandomiseChar",
     "DeleteChar",

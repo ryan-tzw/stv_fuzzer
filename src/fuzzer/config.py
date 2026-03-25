@@ -91,7 +91,7 @@ class FuzzerConfig:
     scheduler: str = "fast"
 
     # Mutation strategy
-    mutation_strategy: str = "grammar_subtree"
+    mutation_strategy: str = "random_single"
 
     # FastScheduler parameters
     energy_c: float = 1.0

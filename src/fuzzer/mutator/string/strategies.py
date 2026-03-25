@@ -4,27 +4,16 @@ Mutation strategies that determine how operations are selected and applied.
 
 import random
 
-from .operations import (
-    DeleteChar,
-    DuplicateChar,
-    InsertRandomChar,
-    RandomiseChar,
-)
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
-
-ALL_OPERATIONS: list[type[MutationOperation]] = [
-    RandomiseChar,
-    DeleteChar,
-    InsertRandomChar,
-    DuplicateChar,
-]
 
 
 class RandomSingleStrategy(MutationStrategy):
-    """Pick one random operation from all available operations."""
+    """Pick one random operation from a provided operation set."""
 
-    def __init__(self, operations: list[type[MutationOperation]] = ALL_OPERATIONS):
+    def __init__(self, operations: list[MutationOperation]):
+        if not operations:
+            raise ValueError("RandomSingleStrategy requires at least one operation")
         self.operations = operations
 
     def select(self) -> list[MutationOperation]:
-        return [random.choice(self.operations)()]
+        return [random.choice(self.operations)]

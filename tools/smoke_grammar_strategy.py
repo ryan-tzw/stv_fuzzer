@@ -1,4 +1,4 @@
-"""Smoke-check for grammar_subtree strategy via core Mutator path."""
+"""Smoke-check for grammar operations via random_single strategy."""
 
 import sys
 from pathlib import Path
@@ -22,7 +22,7 @@ def main() -> int:
     for grammar_name, seed in cases:
         try:
             mutator = Mutator(
-                strategy=build_strategy("grammar_subtree", grammar_name=grammar_name)
+                strategy=build_strategy("random_single", grammar_name=grammar_name)
             )
         except Exception as exc:
             failed = True
