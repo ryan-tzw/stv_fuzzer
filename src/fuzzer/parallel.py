@@ -201,11 +201,7 @@ def _parse_worker_log(log_path: Path) -> dict[str, str]:
     text = _tail_text(log_path)
     return {
         "cycles": _last_match(text, r"Cycles:\s*(\d+)", "-"),
-        "executions": _last_match(
-            text,
-            r"Executions:\s*(\d+)",
-            _last_match(text, r"Iterations:\s*(\d+)", "-"),
-        ),
+        "executions": _last_match(text, r"Executions:\s*(\d+)", "-"),
         "corpus": _last_match(text, r"Corpus size:\s*(\d+)", "-"),
         "crashes": _last_match(text, r"Unique crashes:\s*(\d+)", "-"),
         "execs_per_s": _last_match(text, r"Exec/s:\s*([0-9]+(?:\.[0-9]+)?)", "-"),
@@ -218,9 +214,7 @@ def _parse_worker_status(status_path: Path, log_path: Path) -> dict[str, str]:
             payload = json.loads(status_path.read_text(encoding="utf-8"))
             return {
                 "cycles": str(payload.get("cycle", "-")),
-                "executions": str(
-                    payload.get("execution", payload.get("iteration", "-"))
-                ),
+                "executions": str(payload.get("execution", "-")),
                 "corpus": str(payload.get("corpus_size", "-")),
                 "crashes": str(payload.get("unique_crashes", "-")),
                 "execs_per_s": str(payload.get("execs_per_s", "-")),

@@ -237,7 +237,6 @@ class FuzzerLogger:
         payload = {
             "cycle": self._state.cycle,
             "execution": self._state.execution,
-            "iteration": self._state.execution,
             "corpus_size": self._state.corpus_size,
             "unique_crashes": self._state.unique_crashes,
             "execs_per_s": round(self._state.execs_per_s(), 2),
