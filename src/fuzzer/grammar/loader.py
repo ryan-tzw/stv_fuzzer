@@ -25,6 +25,7 @@ def load_parser(
         str(grammar_path),
         parser=parser,
         start=start,
+        keep_all_tokens=True,
     )
 
 
