@@ -2,8 +2,10 @@
 
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 from fuzzer.grammar.fragments import FragmentPool
+from fuzzer.grammar.generator import generate_from_grammar
 from fuzzer.grammar.loader import load_parser
 from fuzzer.grammar.parser import parse_input
 from fuzzer.grammar.serializer import serialize_tree
@@ -120,6 +122,112 @@ class SubtreeDuplicate(MutationOperation):
             return data
 
 
+class AlternativeSwitch(MutationOperation):
+    """Switch a nonterminal subtree to a different grammar alternative."""
+
+    def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
+        self.grammar_name = grammar_name
+        self._grammar_ref = str(
+            Path(__file__).resolve().parents[2]
+            / "grammar"
+            / "grammars"
+            / f"{grammar_name}.lark"
+        )
+        self._parser = load_parser(self.grammar_name)
+        self._rng = rng or random.Random()
+        self._pool = FragmentPool()
+        self._start_parsers: dict[str, object] = {}
+        self._families_by_symbol = _build_alternative_families(self._parser)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._pool = FragmentPool()
+            self._pool.add_tree(parsed.tree)
+
+            candidates = _collect_alternative_candidates(
+                parsed.tree, self._families_by_symbol
+            )
+            if not candidates:
+                return data
+
+            candidate = self._rng.choice(candidates)
+            replacement = self._synthesize_replacement(candidate)
+            if replacement is None:
+                return data
+
+            mutated_tree = _replace_subtree_at_path(
+                parsed.tree, candidate.path, replacement
+            )
+            mutated_text = serialize_tree(mutated_tree)
+            if mutated_text == data:
+                return data
+
+            # Parseable-first: accept only reparsable outputs.
+            verification = parse_input(self._parser, mutated_text)
+            return mutated_text if verification.success else data
+        except Exception:
+            return data
+
+    def _synthesize_replacement(
+        self, candidate: "_AlternativeCandidate"
+    ) -> Node | None:
+        target = candidate.target
+        replacement = self._from_fragments(target, candidate.current_node)
+        if replacement is not None:
+            return replacement
+        return self._from_generation(target)
+
+    def _from_fragments(
+        self, target: "_AlternativeSpec", current_node: Node
+    ) -> Node | None:
+        fragments = self._pool.get(target.visible_symbol)
+        if not fragments:
+            return None
+
+        self._rng.shuffle(fragments)
+        for fragment in fragments:
+            if serialize_tree(fragment) == serialize_tree(current_node):
+                continue
+            if (
+                target.requires_exact_expansion
+                and _node_signature(fragment) != target.expansion_symbols
+            ):
+                continue
+            return _clone_node(fragment)
+        return None
+
+    def _from_generation(self, target: "_AlternativeSpec") -> Node | None:
+        parser = self._start_parsers.get(target.origin_symbol)
+        if parser is None:
+            parser = load_parser(self.grammar_name, start=target.origin_symbol)
+            self._start_parsers[target.origin_symbol] = parser
+
+        for _ in range(20):
+            try:
+                text = generate_from_grammar(
+                    self._grammar_ref,
+                    start_symbol=target.origin_symbol,
+                    rng=self._rng,
+                    max_depth=8,
+                )
+            except Exception:
+                return None
+
+            result = parse_input(parser, text)
+            if not result.success or result.tree is None:
+                continue
+
+            node = _find_matching_node(result.tree, target)
+            if node is not None:
+                return _clone_node(node)
+
+        return None
+
+
 @dataclass(frozen=True)
 class _DeleteCandidate:
     parent_path: tuple[int, ...]
@@ -131,6 +239,22 @@ class _DuplicateCandidate:
     parent_path: tuple[int, ...]
     insert_index: int
     nodes_to_insert: tuple[Node, ...]
+
+
+@dataclass(frozen=True)
+class _AlternativeSpec:
+    origin_symbol: str
+    visible_symbol: str
+    expansion_symbols: tuple[str, ...]
+    alias: str | None
+    requires_exact_expansion: bool
+
+
+@dataclass(frozen=True)
+class _AlternativeCandidate:
+    path: tuple[int, ...]
+    current_node: Node
+    target: _AlternativeSpec
 
 
 def _collect_terminal_paths(root: Node) -> list[tuple[tuple[int, ...], Node]]:
@@ -229,6 +353,120 @@ def _mutate_text_fallback(text: str, rng: random.Random) -> str:
     if len(text) == 1:
         return ch
     return text[:idx] + text[idx + 1 :]
+
+
+def _build_alternative_families(parser) -> dict[str, list[_AlternativeSpec]]:
+    by_origin: dict[str, list[_AlternativeSpec]] = {}
+
+    for rule in parser.rules:
+        origin = rule.origin.name
+        expansion = tuple(symbol.name for symbol in rule.expansion)
+        alias = rule.alias
+
+        visible_symbol = _rule_visible_symbol(origin, expansion, alias)
+        requires_exact = visible_symbol == origin and len(expansion) > 1
+
+        by_origin.setdefault(origin, []).append(
+            _AlternativeSpec(
+                origin_symbol=origin,
+                visible_symbol=visible_symbol,
+                expansion_symbols=expansion,
+                alias=alias,
+                requires_exact_expansion=requires_exact,
+            )
+        )
+
+    families_by_symbol: dict[str, list[_AlternativeSpec]] = {}
+    for family in by_origin.values():
+        if len(family) < 2:
+            continue
+        for alt in family:
+            families_by_symbol.setdefault(alt.visible_symbol, []).extend(family)
+
+    return families_by_symbol
+
+
+def _rule_visible_symbol(
+    origin_symbol: str, expansion_symbols: tuple[str, ...], alias: str | None
+) -> str:
+    if alias:
+        return alias
+
+    if len(expansion_symbols) == 1:
+        symbol = expansion_symbols[0]
+        if symbol and symbol[0].islower():
+            return symbol
+
+    return origin_symbol
+
+
+def _collect_alternative_candidates(
+    root: Node, families_by_symbol: dict[str, list[_AlternativeSpec]]
+) -> list[_AlternativeCandidate]:
+    candidates: list[_AlternativeCandidate] = []
+    for path, node in _collect_parent_paths(root):
+        families = families_by_symbol.get(node.symbol)
+        if not families:
+            continue
+
+        current_sig = _node_signature(node)
+        for target in families:
+            if target.visible_symbol == node.symbol:
+                if (
+                    target.requires_exact_expansion
+                    and current_sig == target.expansion_symbols
+                ):
+                    continue
+                if (
+                    not target.requires_exact_expansion
+                    and not target.alias
+                    and len(target.expansion_symbols) == 1
+                    and target.expansion_symbols[0] == node.symbol
+                ):
+                    continue
+            candidates.append(
+                _AlternativeCandidate(path=path, current_node=node, target=target)
+            )
+
+    return candidates
+
+
+def _node_signature(node: Node) -> tuple[str, ...]:
+    return tuple(child.symbol for child in node.children)
+
+
+def _find_matching_node(root: Node, target: _AlternativeSpec) -> Node | None:
+    if root.symbol == target.visible_symbol:
+        if not target.requires_exact_expansion or (
+            _node_signature(root) == target.expansion_symbols
+        ):
+            return root
+
+    for child in root.children:
+        match = _find_matching_node(child, target)
+        if match is not None:
+            return match
+
+    return None
+
+
+def _replace_subtree_at_path(
+    root: Node, path: tuple[int, ...], replacement: Node
+) -> Node:
+    if not path:
+        return _clone_node(replacement)
+
+    child_index = path[0]
+    rebuilt_children: list[Node] = []
+    for idx, child in enumerate(root.children):
+        if idx == child_index:
+            rebuilt_children.append(
+                _replace_subtree_at_path(child, path[1:], replacement)
+            )
+        else:
+            rebuilt_children.append(child)
+
+    return Node(symbol=root.symbol, children=rebuilt_children, text=root.text)
 
 
 def _clone_node(node: Node) -> Node:

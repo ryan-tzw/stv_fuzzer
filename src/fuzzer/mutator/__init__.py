@@ -7,6 +7,7 @@ from .string.operations import (
     RandomiseChar,
 )
 from .tree.operations import (
+    AlternativeSwitch,
     GrammarSubtreeReplace,
     SubtreeDelete,
     SubtreeDuplicate,
@@ -31,6 +32,7 @@ __all__ = [
     "DeleteChar",
     "InsertRandomChar",
     "DuplicateChar",
+    "AlternativeSwitch",
     "GrammarSubtreeReplace",
     "SubtreeDelete",
     "SubtreeDuplicate",
