@@ -37,10 +37,19 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
         "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv6-parser"),
         "blackbox_input_flag": "--ipstr",
     },
-    "cidrize": {
+    "cidrize_ipv4": {
         "project_dir": Path("targets/_reference/cidrize"),
         "harness": "cidrize",
         "corpus": "ipv4",
+        "mode": "differential",
+        "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
+        "blackbox_input_flag": "--ipstr",
+        "blackbox_args": ("--func", "cidrize", "--raise-errors"),
+    },
+    "cidrize_ipv6": {
+        "project_dir": Path("targets/_reference/cidrize"),
+        "harness": "cidrize",
+        "corpus": "ipv6",
         "mode": "differential",
         "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
         "blackbox_input_flag": "--ipstr",
