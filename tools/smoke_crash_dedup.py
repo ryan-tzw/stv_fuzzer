@@ -4,16 +4,18 @@ from __future__ import annotations
 def _make_parsed_crash(
     *,
     message: str,
+    exception_type: str = "JSONDecodeError",
     category: str = "invalidity",
+    file: str = "buggy_json/decoder_stv.py",
     line: int = 384,
     category_source: str = "trigger_line",
 ):
     from fuzzer.observers.input import ParsedCrash
 
     return ParsedCrash(
-        exception_type="JSONDecodeError",
+        exception_type=exception_type,
         exception_message=message,
-        file="buggy_json/decoder_stv.py",
+        file=file,
         line=line,
         traceback="Traceback ...",
         bug_category=category,
@@ -74,8 +76,26 @@ def main() -> int:
         )
         assert db.record_crash("input-g", c7) is True
 
+        # 6) traceback_fallback AddrFormatError: input-specific messages collapse by site.
+        c8 = _make_parsed_crash(
+            exception_type="netaddr.core.AddrFormatError",
+            message="not a recognised IP glob range: '7.6.71.'!",
+            file="netaddr/ip/glob.py",
+            line=79,
+            category_source="traceback_fallback",
+        )
+        c9 = _make_parsed_crash(
+            exception_type="netaddr.core.AddrFormatError",
+            message="not a recognised IP glob range: '152.17.7.'!",
+            file="netaddr/ip/glob.py",
+            line=79,
+            category_source="traceback_fallback",
+        )
+        assert db.record_crash("input-h", c8) is True
+        assert db.record_crash("input-i", c9) is False
+
         rows = db._conn.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()
-        _assert_equal(int(rows["n"]), 5, "crash row count after dedup scenarios")
+        _assert_equal(int(rows["n"]), 6, "crash row count after dedup scenarios")
         db.close()
 
     with tempfile.TemporaryDirectory() as temp_dir:

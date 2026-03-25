@@ -25,6 +25,7 @@ _FILE_LINE_RE = re.compile(r'\s*File "(.+)", line (\d+)')
 _EXCEPTION_CATEGORY_FALLBACK: dict[str, str] = {
     "jsondecodeerror": "bonus_untracked",
     "cidrizeerror": "bonus_untracked",
+    "addrformaterror": "invalidity",
     "invalidcidrformaterror": "invalidity",
     "syntactic": "invalidity",
     "semantic": "validity",

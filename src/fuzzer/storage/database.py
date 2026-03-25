@@ -24,6 +24,10 @@ def _normalize_exception_message(message: str) -> str:
     return text.strip().lower()
 
 
+def _normalize_exception_type(value: str) -> str:
+    return (value or "").strip().split(".")[-1].lower()
+
+
 class FuzzerDatabase:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
@@ -89,6 +93,11 @@ class FuzzerDatabase:
         file_path = (parsed.file or "").strip()
         line = parsed.line
         if parsed.category_source == "final_bug_count":
+            return f"{category}|{exc_type}|{file_path}|{line}"
+        if (
+            parsed.category_source == "traceback_fallback"
+            and _normalize_exception_type(exc_type) == "addrformaterror"
+        ):
             return f"{category}|{exc_type}|{file_path}|{line}"
 
         normalized_message = _normalize_exception_message(parsed.exception_message)
