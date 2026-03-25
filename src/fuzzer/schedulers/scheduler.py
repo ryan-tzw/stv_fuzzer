@@ -6,7 +6,7 @@ and how much energy (number of mutations) to apply to it.
 import random
 from abc import ABC, abstractmethod
 
-from .corpus import SeedInput
+from fuzzer.corpus import SeedInput
 
 DEFAULT_ENERGY = 10
 

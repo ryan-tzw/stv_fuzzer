@@ -9,7 +9,7 @@ from typing import Any
 
 from fuzzer.config import FuzzerConfig
 from fuzzer.mutator import Mutator, build_strategy
-from fuzzer.scheduler import FastScheduler, RandomScheduler, Scheduler
+from fuzzer.schedulers import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import (
     BinaryExecutor,
     DifferentialExecutor,
