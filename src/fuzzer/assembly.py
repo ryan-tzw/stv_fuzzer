@@ -84,4 +84,9 @@ def _build_scheduler(config: FuzzerConfig) -> Scheduler:
 
 
 def _build_mutator(config: FuzzerConfig) -> BaseMutator:
-    return Mutator(strategy=build_strategy(config.mutation_strategy))
+    return Mutator(
+        strategy=build_strategy(
+            config.mutation_strategy,
+            grammar_name=config.corpus,
+        )
+    )
