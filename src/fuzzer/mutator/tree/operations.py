@@ -1,6 +1,7 @@
 """Tree-domain mutation operations exposed through string mutate interface."""
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -360,7 +361,9 @@ def _build_alternative_families(parser) -> dict[str, list[_AlternativeSpec]]:
 
     for rule in parser.rules:
         origin = rule.origin.name
-        expansion = tuple(symbol.name for symbol in rule.expansion)
+        expansion: tuple[str, ...] = tuple(
+            str(symbol.name) for symbol in rule.expansion
+        )
         alias = rule.alias
 
         visible_symbol = _rule_visible_symbol(origin, expansion, alias)
@@ -628,7 +631,7 @@ def _apply_duplicate(root: Node, candidate: _DuplicateCandidate) -> Node:
 def _edit_children_at_path(
     root: Node,
     path: tuple[int, ...],
-    edit: callable,
+    edit: Callable[[list[Node]], list[Node]],
 ) -> Node:
     if not path:
         return Node(symbol=root.symbol, children=edit(root.children), text=root.text)
