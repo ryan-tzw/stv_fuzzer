@@ -4,7 +4,13 @@ from typing import Any
 
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
 from fuzzer.mutator.selectors import SELECTOR_FACTORIES
-from fuzzer.mutator.tree.operations import GrammarSubtreeReplace
+from fuzzer.mutator.tree.operations import (
+    AlternativeSwitch,
+    GrammarSubtreeReplace,
+    SubtreeDelete,
+    SubtreeDuplicate,
+    TerminalMutate,
+)
 
 
 STRATEGY_FACTORIES = SELECTOR_FACTORIES
@@ -28,4 +34,10 @@ def build_strategy(name: str, **context: Any) -> MutationStrategy:
 
 def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation]:
     grammar_name = context.get("grammar_name", "ipv4")
-    return [GrammarSubtreeReplace(grammar_name=grammar_name)]
+    return [
+        GrammarSubtreeReplace(grammar_name=grammar_name),
+        TerminalMutate(grammar_name=grammar_name),
+        SubtreeDelete(grammar_name=grammar_name),
+        SubtreeDuplicate(grammar_name=grammar_name),
+        AlternativeSwitch(grammar_name=grammar_name),
+    ]
