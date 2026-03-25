@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO
@@ -24,6 +25,16 @@ from rich.table import Table
 from fuzzer.config import FuzzerConfig
 
 
+@dataclass
+class WorkerHandle:
+    profile: str
+    worker_id: int
+    proc: subprocess.Popen[bytes]
+    log_path: Path
+    status_path: Path
+    log_file: BinaryIO
+
+
 def run_parallel(config: FuzzerConfig, workers: int) -> int:
     """Launch *workers* subprocesses and wait for completion.
 
@@ -34,33 +45,60 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
     if workers <= 1:
         raise ValueError("workers must be > 1 for parallel mode")
 
+    return run_parallel_profiles([config], workers)
+
+
+def run_parallel_profiles(
+    configs: list[FuzzerConfig], workers: int, profile_names: list[str] | None = None
+) -> int:
+    """Launch multiple profiles concurrently across *workers* subprocesses."""
+    if workers <= 1:
+        raise ValueError("workers must be > 1 for parallel mode")
+    if not configs:
+        raise ValueError("configs must not be empty")
+    if workers < len(configs):
+        raise ValueError("workers must be >= number of profiles")
+
+    profile_workers = _allocate_workers(configs, workers, profile_names)
+
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_dir = config.runs_dir / "parallel" / session_id
+    session_dir = configs[0].runs_dir / "parallel" / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
-    procs: list[tuple[int, subprocess.Popen[bytes], Path, Path, BinaryIO]] = []
+    procs: list[WorkerHandle] = []
     console = Console()
 
-    for worker_id in range(workers):
-        worker_dir = session_dir / f"worker_{worker_id}"
-        worker_dir.mkdir(parents=True, exist_ok=True)
+    for config, profile_name, profile_worker_count in profile_workers:
+        profile_safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", profile_name)
+        for worker_id in range(profile_worker_count):
+            worker_dir = session_dir / f"{profile_safe}_worker_{worker_id}"
+            worker_dir.mkdir(parents=True, exist_ok=True)
 
-        log_path = session_dir / f"worker_{worker_id}.log"
-        status_path = session_dir / f"worker_{worker_id}.status.json"
-        log_file = log_path.open("wb")
+            log_path = session_dir / f"{profile_safe}_worker_{worker_id}.log"
+            status_path = session_dir / f"{profile_safe}_worker_{worker_id}.status.json"
+            log_file = log_path.open("wb")
 
-        cmd = _build_worker_cmd(config, worker_dir)
-        env = os.environ.copy()
-        env["STV_FUZZER_STATUS_FILE"] = str(status_path)
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            cwd=str(Path.cwd()),
-            env=env,
-        )
+            cmd = _build_worker_cmd(config, worker_dir)
+            env = os.environ.copy()
+            env["STV_FUZZER_STATUS_FILE"] = str(status_path)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                cwd=str(Path.cwd()),
+                env=env,
+            )
 
-        procs.append((worker_id, proc, log_path, status_path, log_file))
+            procs.append(
+                WorkerHandle(
+                    profile=profile_name,
+                    worker_id=worker_id,
+                    proc=proc,
+                    log_path=log_path,
+                    status_path=status_path,
+                    log_file=log_file,
+                )
+            )
 
     start_time = time.monotonic()
     interrupted = False
@@ -72,7 +110,7 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
         ) as live:
             while True:
                 live.update(_render_dashboard(procs, session_dir, start_time))
-                if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+                if all(handle.proc.poll() is not None for handle in procs):
                     break
                 time.sleep(0.25)
     except KeyboardInterrupt:
@@ -81,16 +119,16 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
         _graceful_stop_workers(procs)
 
     failed = False
-    for worker_id, proc, log_path, _, log_file in procs:
-        exit_code = proc.wait()
-        log_file.close()
+    for handle in procs:
+        exit_code = handle.proc.wait()
+        handle.log_file.close()
         if interrupted:
             continue
         if exit_code != 0:
             failed = True
             print(
-                f"[parallel] worker {worker_id} exited with {exit_code} "
-                f"(log: {log_path})",
+                f"[parallel] profile={handle.profile} worker={handle.worker_id} "
+                f"exited with {exit_code} (log: {handle.log_path})",
                 file=sys.stderr,
             )
 
@@ -107,54 +145,54 @@ def run_parallel(config: FuzzerConfig, workers: int) -> int:
 
 
 def _graceful_stop_workers(
-    procs: list[tuple[int, subprocess.Popen[bytes], Path, Path, BinaryIO]],
-    grace_seconds: float = 5.0,
+    procs: list[WorkerHandle], grace_seconds: float = 5.0
 ) -> None:
     # First ask all running workers to stop cleanly (their engine handles
     # KeyboardInterrupt and executes stop/finalization).
-    for _, proc, _, _, _ in procs:
-        if proc.poll() is None:
+    for handle in procs:
+        if handle.proc.poll() is None:
             try:
-                proc.send_signal(signal.SIGINT)
+                handle.proc.send_signal(signal.SIGINT)
             except Exception:
                 pass
 
     deadline = time.monotonic() + grace_seconds
     while time.monotonic() < deadline:
-        if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+        if all(handle.proc.poll() is not None for handle in procs):
             return
         time.sleep(0.1)
 
     # Fall back to terminate/kill if any worker ignored SIGINT.
-    for _, proc, _, _, _ in procs:
-        if proc.poll() is None:
+    for handle in procs:
+        if handle.proc.poll() is None:
             try:
-                proc.terminate()
+                handle.proc.terminate()
             except Exception:
                 pass
 
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
-        if all(proc.poll() is not None for _, proc, _, _, _ in procs):
+        if all(handle.proc.poll() is not None for handle in procs):
             return
         time.sleep(0.1)
 
-    for _, proc, _, _, _ in procs:
-        if proc.poll() is None:
+    for handle in procs:
+        if handle.proc.poll() is None:
             try:
-                proc.kill()
+                handle.proc.kill()
             except Exception:
                 pass
 
 
 def _render_dashboard(
-    procs: list[tuple[int, subprocess.Popen[bytes], Path, Path, BinaryIO]],
+    procs: list[WorkerHandle],
     session_dir: Path,
     start_time: float,
 ) -> Panel:
     elapsed = int(time.monotonic() - start_time)
 
     table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Profile")
     table.add_column("Worker", justify="right")
     table.add_column("Status")
     table.add_column("Cycle", justify="right")
@@ -164,21 +202,22 @@ def _render_dashboard(
     table.add_column("Exec/s", justify="right")
     table.add_column("Log")
 
-    for worker_id, proc, log_path, status_path, _ in procs:
-        status = _worker_status(proc)
-        snap = _parse_worker_status(status_path, log_path)
+    for handle in procs:
+        status = _worker_status(handle.proc)
+        snap = _parse_worker_status(handle.status_path, handle.log_path)
         table.add_row(
-            str(worker_id),
+            handle.profile,
+            str(handle.worker_id),
             status,
             snap["cycles"],
             snap["executions"],
             snap["corpus"],
             snap["crashes"],
             snap["execs_per_s"],
-            log_path.name,
+            handle.log_path.name,
         )
 
-    running = sum(1 for _, proc, _, _, _ in procs if proc.poll() is None)
+    running = sum(1 for handle in procs if handle.proc.poll() is None)
     title = (
         f"[bold blue]Parallel Fuzzer[/bold blue] "
         f"workers={len(procs)} running={running} elapsed={elapsed}s"
@@ -289,3 +328,19 @@ def _build_worker_cmd(config: FuzzerConfig, worker_runs_dir: Path) -> list[str]:
             cmd.append(f"--blackbox-arg={arg}")
 
     return cmd
+
+
+def _allocate_workers(
+    configs: list[FuzzerConfig], workers: int, profile_names: list[str] | None
+) -> list[tuple[FuzzerConfig, str, int]]:
+    base = workers // len(configs)
+    remainder = workers % len(configs)
+    allocations: list[tuple[FuzzerConfig, str, int]] = []
+    for idx, config in enumerate(configs):
+        count = base + (1 if idx < remainder else 0)
+        if profile_names is not None:
+            profile_name = profile_names[idx]
+        else:
+            profile_name = f"{config.harness}:{config.corpus}"
+        allocations.append((config, profile_name, count))
+    return allocations

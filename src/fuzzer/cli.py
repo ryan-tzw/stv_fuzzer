@@ -10,7 +10,7 @@ from fuzzer.config import (
 )
 from fuzzer.mutator import AVAILABLE_STRATEGIES
 from fuzzer.engine import FuzzingEngine
-from fuzzer.parallel import run_parallel
+from fuzzer.parallel import run_parallel, run_parallel_profiles
 
 
 def main() -> int:
@@ -27,6 +27,11 @@ def main() -> int:
         choices=profile_choices,
         default=None,
         help="Built-in target profile to load as base configuration",
+    )
+    parser.add_argument(
+        "--profiles",
+        default=None,
+        help="Comma-separated built-in profiles for concurrent multi-profile runs",
     )
     parser.add_argument(
         "--list-profiles",
@@ -146,6 +151,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.parallel_workers < 1:
         parser.error("--parallel-workers must be >= 1")
+    if args.profile is not None and args.profiles is not None:
+        parser.error("--profile and --profiles cannot be used together")
 
     if args.list_profiles:
         for name in profile_choices:
@@ -154,6 +161,95 @@ def main() -> int:
 
     max_cycles_arg = None if args.max_cycles == -1 else args.max_cycles
     time_limit = None if args.time_limit == -1 else args.time_limit
+
+    if args.profiles is not None:
+        profile_names = [p.strip() for p in args.profiles.split(",") if p.strip()]
+        if not profile_names:
+            parser.error("--profiles must include at least one profile name")
+
+        invalid = [p for p in profile_names if p not in profile_choices]
+        if invalid:
+            parser.error(f"Unknown profile(s): {', '.join(invalid)}")
+
+        if args.parallel_workers < len(profile_names):
+            parser.error("--parallel-workers must be >= number of profiles")
+
+        if (
+            args.project_dir is not None
+            or args.harness is not None
+            or args.corpus is not None
+            or args.mode is not None
+            or args.harness_arg is not None
+            or args.blackbox_binary is not None
+            or args.blackbox_input_flag is not None
+            or args.blackbox_arg is not None
+        ):
+            parser.error(
+                "target-specific overrides are not supported with --profiles; "
+                "use profile defaults only"
+            )
+
+        configs: list[FuzzerConfig] = []
+        for profile_name in profile_names:
+            base = profile_overrides(profile_name)
+            configs.append(
+                FuzzerConfig(
+                    project_dir=base["project_dir"],
+                    harness=base["harness"],
+                    corpus=base["corpus"],
+                    mode=base.get("mode", FuzzerConfig.mode),
+                    harness_args=tuple(
+                        base.get("harness_args", FuzzerConfig.harness_args)
+                    ),
+                    blackbox_binary=base.get("blackbox_binary"),
+                    blackbox_input_flag=base.get(
+                        "blackbox_input_flag",
+                        FuzzerConfig.blackbox_input_flag,
+                    ),
+                    blackbox_args=tuple(
+                        base.get("blackbox_args", FuzzerConfig.blackbox_args)
+                    ),
+                    runs_dir=(
+                        args.runs_dir
+                        if args.runs_dir is not None
+                        else base.get("runs_dir", FuzzerConfig.runs_dir)
+                    ),
+                    max_cycles=(
+                        max_cycles_arg
+                        if max_cycles_arg is not None
+                        else base.get("max_cycles", FuzzerConfig.max_cycles)
+                    ),
+                    time_limit=(
+                        time_limit
+                        if time_limit is not None
+                        else base.get("time_limit", FuzzerConfig.time_limit)
+                    ),
+                    scheduler=(
+                        args.scheduler
+                        if args.scheduler is not None
+                        else base.get("scheduler", FuzzerConfig.scheduler)
+                    ),
+                    mutation_strategy=(
+                        args.mutation_strategy
+                        if args.mutation_strategy is not None
+                        else base.get(
+                            "mutation_strategy", FuzzerConfig.mutation_strategy
+                        )
+                    ),
+                    energy_c=(
+                        args.energy_c
+                        if args.energy_c is not None
+                        else base.get("energy_c", FuzzerConfig.energy_c)
+                    ),
+                    max_energy=(
+                        args.max_energy
+                        if args.max_energy is not None
+                        else base.get("max_energy", FuzzerConfig.max_energy)
+                    ),
+                )
+            )
+
+        return run_parallel_profiles(configs, args.parallel_workers, profile_names)
 
     base = profile_overrides(args.profile) if args.profile is not None else {}
 
