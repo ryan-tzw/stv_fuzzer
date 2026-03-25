@@ -84,11 +84,14 @@ class FuzzerDatabase:
 
     @staticmethod
     def _build_dedup_key(parsed: ParsedCrash) -> str:
-        normalized_message = _normalize_exception_message(parsed.exception_message)
         category = (parsed.bug_category or "").strip().lower()
         exc_type = (parsed.exception_type or "").strip()
         file_path = (parsed.file or "").strip()
         line = parsed.line
+        if parsed.category_source == "final_bug_count":
+            return f"{category}|{exc_type}|{file_path}|{line}"
+
+        normalized_message = _normalize_exception_message(parsed.exception_message)
         return f"{category}|{exc_type}|{file_path}|{line}|{normalized_message}"
 
     # ------------------------------------------------------------------

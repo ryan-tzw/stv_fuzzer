@@ -5,6 +5,8 @@ def _make_parsed_crash(
     *,
     message: str,
     category: str = "invalidity",
+    line: int = 384,
+    category_source: str = "trigger_line",
 ):
     from fuzzer.observers.input import ParsedCrash
 
@@ -12,10 +14,10 @@ def _make_parsed_crash(
         exception_type="JSONDecodeError",
         exception_message=message,
         file="buggy_json/decoder_stv.py",
-        line=384,
+        line=line,
         traceback="Traceback ...",
         bug_category=category,
-        category_source="trigger_line",
+        category_source=category_source,
     )
 
 
@@ -35,17 +37,62 @@ def main() -> int:
         db_path = Path(temp_dir) / "results.db"
         db = FuzzerDatabase(db_path)
 
-        # 1) Same site/category + message formatting variants -> dedup hit.
+        # 1) final_bug_count: same site/category + different messages -> dedup hit.
+        c1 = _make_parsed_crash(
+            message="invalid IPNetwork 0.140..49",
+            category_source="final_bug_count",
+        )
+        c2 = _make_parsed_crash(
+            message="invalid IPNetwork .2.2.281",
+            category_source="final_bug_count",
+        )
+        assert db.record_crash("input-a", c1) is True
+        assert db.record_crash("input-b", c2) is False
+
+        # 2) final_bug_count: different line -> new unique crash.
+        c3 = _make_parsed_crash(
+            message="invalid IPNetwork 1.1.1.a",
+            line=1046,
+            category_source="final_bug_count",
+        )
+        assert db.record_crash("input-c", c3) is True
+
+        # 3) non-final_bug_count: message formatting variants still dedup.
+        c4 = _make_parsed_crash(message="Expecting   value")
+        c5 = _make_parsed_crash(message="expecting value")
+        assert db.record_crash("input-d", c4) is True
+        assert db.record_crash("input-e", c5) is False
+
+        # 4) non-final_bug_count: different message -> new unique crash.
+        c6 = _make_parsed_crash(message="Unterminated string")
+        assert db.record_crash("input-f", c6) is True
+
+        # 5) non-final_bug_count: same site/message + different category -> new unique.
+        c7 = _make_parsed_crash(
+            message="Unterminated string",
+            category="bonus_untracked",
+        )
+        assert db.record_crash("input-g", c7) is True
+
+        rows = db._conn.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()
+        _assert_equal(int(rows["n"]), 5, "crash row count after dedup scenarios")
+        db.close()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "results.db"
+        db = FuzzerDatabase(db_path)
+
+        # 6) Same site/category + message formatting variants -> dedup hit.
         c1 = _make_parsed_crash(message="Expecting   value")
         c2 = _make_parsed_crash(message="expecting value")
         assert db.record_crash("input-a", c1) is True
         assert db.record_crash("input-b", c2) is False
 
-        # 2) Same site/category + different message -> new unique crash.
+        # 7) Same site/category + different message -> new unique crash.
         c3 = _make_parsed_crash(message="Unterminated string")
         assert db.record_crash("input-c", c3) is True
 
-        # 3) Same site/message + different category -> new unique crash.
+        # 8) Same site/message + different category -> new unique crash.
         c4 = _make_parsed_crash(
             message="Unterminated string",
             category="bonus_untracked",
