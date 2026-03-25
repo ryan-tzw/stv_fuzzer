@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
-from fuzzer.mutator.string.strategies import RandomSingleStrategy
+from fuzzer.mutator.selectors import RandomSingleStrategy
 from fuzzer.mutator.tree.operations import GrammarSubtreeReplace
 
 

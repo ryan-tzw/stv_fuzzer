@@ -11,7 +11,7 @@ from .strategies import (
     AVAILABLE_STRATEGIES,
     build_strategy,
 )
-from .string.strategies import RandomSingleStrategy
+from .selectors import RandomSingleStrategy
 
 __all__ = [
     "Mutator",

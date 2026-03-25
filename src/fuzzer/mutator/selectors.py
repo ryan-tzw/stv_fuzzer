@@ -1,6 +1,4 @@
-"""
-Mutation strategies that determine how operations are selected and applied.
-"""
+"""Domain-neutral mutation selectors."""
 
 import random
 
