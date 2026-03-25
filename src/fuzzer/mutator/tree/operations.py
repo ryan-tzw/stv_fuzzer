@@ -1,6 +1,7 @@
 """Tree-domain mutation operations exposed through string mutate interface."""
 
 import random
+from dataclasses import dataclass
 
 from fuzzer.grammar.fragments import FragmentPool
 from fuzzer.grammar.loader import load_parser
@@ -65,6 +66,71 @@ class TerminalMutate(MutationOperation):
             return serialize_tree(mutated_tree)
         except Exception:
             return data
+
+
+class SubtreeDelete(MutationOperation):
+    """Delete one compatible subtree from a repeated structure."""
+
+    def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._rng = rng or random.Random()
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            candidates = _collect_delete_candidates(parsed.tree)
+            if not candidates:
+                return data
+
+            candidate = self._rng.choice(candidates)
+            mutated_tree = _apply_delete(parsed.tree, candidate)
+            mutated = serialize_tree(mutated_tree)
+            return mutated if mutated != data else data
+        except Exception:
+            return data
+
+
+class SubtreeDuplicate(MutationOperation):
+    """Duplicate one compatible subtree from a repeated structure."""
+
+    def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._rng = rng or random.Random()
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            candidates = _collect_duplicate_candidates(parsed.tree)
+            if not candidates:
+                return data
+
+            candidate = self._rng.choice(candidates)
+            mutated_tree = _apply_duplicate(parsed.tree, candidate)
+            mutated = serialize_tree(mutated_tree)
+            return mutated if mutated != data else data
+        except Exception:
+            return data
+
+
+@dataclass(frozen=True)
+class _DeleteCandidate:
+    parent_path: tuple[int, ...]
+    remove_indices: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class _DuplicateCandidate:
+    parent_path: tuple[int, ...]
+    insert_index: int
+    nodes_to_insert: tuple[Node, ...]
 
 
 def _collect_terminal_paths(root: Node) -> list[tuple[tuple[int, ...], Node]]:
@@ -163,6 +229,181 @@ def _mutate_text_fallback(text: str, rng: random.Random) -> str:
     if len(text) == 1:
         return ch
     return text[:idx] + text[idx + 1 :]
+
+
+def _clone_node(node: Node) -> Node:
+    return Node(
+        symbol=node.symbol,
+        children=[_clone_node(child) for child in node.children],
+        text=node.text,
+    )
+
+
+def _collect_parent_paths(root: Node) -> list[tuple[tuple[int, ...], Node]]:
+    output: list[tuple[tuple[int, ...], Node]] = []
+
+    def walk(node: Node, path: tuple[int, ...]) -> None:
+        output.append((path, node))
+        for idx, child in enumerate(node.children):
+            walk(child, path + (idx,))
+
+    walk(root, ())
+    return output
+
+
+def _collect_delete_candidates(root: Node) -> list[_DeleteCandidate]:
+    candidates: list[_DeleteCandidate] = []
+    for path, parent in _collect_parent_paths(root):
+        candidates.extend(_json_delete_candidates(path, parent))
+        if parent.symbol not in {"object", "array"}:
+            candidates.extend(_generic_delete_candidates(path, parent))
+    return candidates
+
+
+def _collect_duplicate_candidates(root: Node) -> list[_DuplicateCandidate]:
+    candidates: list[_DuplicateCandidate] = []
+    for path, parent in _collect_parent_paths(root):
+        candidates.extend(_json_duplicate_candidates(path, parent))
+        if parent.symbol not in {"object", "array"}:
+            candidates.extend(_generic_duplicate_candidates(path, parent))
+    return candidates
+
+
+def _json_item_indices(parent: Node) -> list[int]:
+    if parent.symbol == "object":
+        return [
+            idx for idx, child in enumerate(parent.children) if child.symbol == "pair"
+        ]
+    if parent.symbol == "array":
+        blocked = {"LSQB", "RSQB", "COMMA"}
+        return [
+            idx
+            for idx, child in enumerate(parent.children)
+            if child.symbol not in blocked
+        ]
+    return []
+
+
+def _json_delete_candidates(
+    path: tuple[int, ...], parent: Node
+) -> list[_DeleteCandidate]:
+    item_indices = _json_item_indices(parent)
+    if not item_indices:
+        return []
+
+    candidates: list[_DeleteCandidate] = []
+    for idx in item_indices:
+        remove = {idx}
+        if len(item_indices) > 1:
+            if (
+                idx + 1 < len(parent.children)
+                and parent.children[idx + 1].symbol == "COMMA"
+            ):
+                remove.add(idx + 1)
+            elif idx > 0 and parent.children[idx - 1].symbol == "COMMA":
+                remove.add(idx - 1)
+        candidates.append(
+            _DeleteCandidate(parent_path=path, remove_indices=tuple(sorted(remove)))
+        )
+    return candidates
+
+
+def _json_duplicate_candidates(
+    path: tuple[int, ...], parent: Node
+) -> list[_DuplicateCandidate]:
+    item_indices = _json_item_indices(parent)
+    if not item_indices:
+        return []
+
+    candidates: list[_DuplicateCandidate] = []
+    for idx in item_indices:
+        clone = _clone_node(parent.children[idx])
+        comma = Node(symbol="COMMA", children=[], text=",")
+        candidates.append(
+            _DuplicateCandidate(
+                parent_path=path,
+                insert_index=idx + 1,
+                nodes_to_insert=(comma, clone),
+            )
+        )
+    return candidates
+
+
+def _generic_delete_candidates(
+    path: tuple[int, ...], parent: Node
+) -> list[_DeleteCandidate]:
+    groups: dict[str, list[int]] = {}
+    for idx, child in enumerate(parent.children):
+        if child.text is None:
+            groups.setdefault(child.symbol, []).append(idx)
+
+    candidates: list[_DeleteCandidate] = []
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        for idx in indices:
+            candidates.append(_DeleteCandidate(parent_path=path, remove_indices=(idx,)))
+    return candidates
+
+
+def _generic_duplicate_candidates(
+    path: tuple[int, ...], parent: Node
+) -> list[_DuplicateCandidate]:
+    groups: dict[str, list[int]] = {}
+    for idx, child in enumerate(parent.children):
+        if child.text is None:
+            groups.setdefault(child.symbol, []).append(idx)
+
+    candidates: list[_DuplicateCandidate] = []
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        for idx in indices:
+            candidates.append(
+                _DuplicateCandidate(
+                    parent_path=path,
+                    insert_index=idx + 1,
+                    nodes_to_insert=(_clone_node(parent.children[idx]),),
+                )
+            )
+    return candidates
+
+
+def _apply_delete(root: Node, candidate: _DeleteCandidate) -> Node:
+    def edit(children: list[Node]) -> list[Node]:
+        remove = set(candidate.remove_indices)
+        return [child for idx, child in enumerate(children) if idx not in remove]
+
+    return _edit_children_at_path(root, candidate.parent_path, edit)
+
+
+def _apply_duplicate(root: Node, candidate: _DuplicateCandidate) -> Node:
+    def edit(children: list[Node]) -> list[Node]:
+        before = list(children[: candidate.insert_index])
+        after = list(children[candidate.insert_index :])
+        inserted = [_clone_node(node) for node in candidate.nodes_to_insert]
+        return before + inserted + after
+
+    return _edit_children_at_path(root, candidate.parent_path, edit)
+
+
+def _edit_children_at_path(
+    root: Node,
+    path: tuple[int, ...],
+    edit: callable,
+) -> Node:
+    if not path:
+        return Node(symbol=root.symbol, children=edit(root.children), text=root.text)
+
+    child_index = path[0]
+    rebuilt_children: list[Node] = []
+    for idx, child in enumerate(root.children):
+        if idx == child_index:
+            rebuilt_children.append(_edit_children_at_path(child, path[1:], edit))
+        else:
+            rebuilt_children.append(child)
+
+    return Node(symbol=root.symbol, children=rebuilt_children, text=root.text)
 
 
 _TERMINAL_MUTATORS = {

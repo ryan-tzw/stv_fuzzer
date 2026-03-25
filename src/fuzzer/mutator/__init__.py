@@ -6,7 +6,12 @@ from .string.operations import (
     InsertRandomChar,
     RandomiseChar,
 )
-from .tree.operations import GrammarSubtreeReplace, TerminalMutate
+from .tree.operations import (
+    GrammarSubtreeReplace,
+    SubtreeDelete,
+    SubtreeDuplicate,
+    TerminalMutate,
+)
 from .strategies import (
     AVAILABLE_STRATEGIES,
     build_strategy,
@@ -27,5 +32,7 @@ __all__ = [
     "InsertRandomChar",
     "DuplicateChar",
     "GrammarSubtreeReplace",
+    "SubtreeDelete",
+    "SubtreeDuplicate",
     "TerminalMutate",
 ]
