@@ -1,6 +1,7 @@
 """Domain-neutral mutation selectors."""
 
 import random
+from collections.abc import Callable
 
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
 
@@ -15,3 +16,8 @@ class RandomSingleStrategy(MutationStrategy):
 
     def select(self) -> list[MutationOperation]:
         return [random.choice(self.operations)]
+
+
+SELECTOR_FACTORIES: dict[str, Callable[..., MutationStrategy]] = {
+    "random_single": RandomSingleStrategy,
+}

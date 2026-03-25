@@ -1,16 +1,13 @@
-"""Mutator strategy registry with generic operation-selection strategies."""
+"""Mutator strategy builder over selector registry and operation wiring."""
 
-from collections.abc import Callable
 from typing import Any
 
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
-from fuzzer.mutator.selectors import RandomSingleStrategy
+from fuzzer.mutator.selectors import SELECTOR_FACTORIES
 from fuzzer.mutator.tree.operations import GrammarSubtreeReplace
 
 
-STRATEGY_FACTORIES: dict[str, Callable[..., MutationStrategy]] = {
-    "random_single": RandomSingleStrategy,
-}
+STRATEGY_FACTORIES = SELECTOR_FACTORIES
 
 AVAILABLE_STRATEGIES: tuple[str, ...] = tuple(STRATEGY_FACTORIES.keys())
 
