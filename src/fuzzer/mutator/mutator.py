@@ -2,7 +2,8 @@
 Mutator: applies a mutation strategy to produce a mutated input.
 """
 
-from .strategies import MutationStrategy, RandomSingleStrategy
+from fuzzer.mutator.base import MutationStrategy
+from fuzzer.mutator.string.strategies import RandomSingleStrategy
 
 
 class Mutator:

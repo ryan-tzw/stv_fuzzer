@@ -11,10 +11,10 @@ if str(SRC_DIR) not in sys.path:
 
 def main() -> int:
     from fuzzer.grammar.fragments import FragmentPool
-    from fuzzer.grammar.grammar_mutator import mutate_tree
     from fuzzer.grammar.loader import load_parser
     from fuzzer.grammar.parser import parse_input
     from fuzzer.grammar.serializer import serialize_tree
+    from fuzzer.mutator.tree.grammar_mutator import mutate_tree
 
     parser = load_parser("ipv4")
     r1 = parse_input(parser, "192.168.0.1")

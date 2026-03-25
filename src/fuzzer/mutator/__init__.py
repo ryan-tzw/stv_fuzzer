@@ -1,19 +1,18 @@
+from .base import MutationOperation, MutationStrategy
 from .mutator import Mutator
-from .operations import (
+from .string.operations import (
     DeleteChar,
     DuplicateChar,
-    GrammarSubtreeReplace,
     InsertRandomChar,
-    MutationOperation,
     RandomiseChar,
 )
+from .tree.operations import GrammarSubtreeReplace
 from .strategies import (
     AVAILABLE_STRATEGIES,
-    GrammarSubtreeStrategy,
-    MutationStrategy,
-    RandomSingleStrategy,
     build_strategy,
 )
+from .string.strategies import RandomSingleStrategy
+from .tree.strategies import GrammarSubtreeStrategy
 
 __all__ = [
     "Mutator",
