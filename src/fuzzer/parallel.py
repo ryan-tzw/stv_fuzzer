@@ -157,7 +157,8 @@ def _render_dashboard(
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("Worker", justify="right")
     table.add_column("Status")
-    table.add_column("Iter", justify="right")
+    table.add_column("Cycle", justify="right")
+    table.add_column("Exec", justify="right")
     table.add_column("Corpus", justify="right")
     table.add_column("Crashes", justify="right")
     table.add_column("Exec/s", justify="right")
@@ -169,7 +170,8 @@ def _render_dashboard(
         table.add_row(
             str(worker_id),
             status,
-            snap["iterations"],
+            snap["cycles"],
+            snap["executions"],
             snap["corpus"],
             snap["crashes"],
             snap["execs_per_s"],
@@ -198,7 +200,12 @@ def _worker_status(proc: subprocess.Popen[bytes]) -> str:
 def _parse_worker_log(log_path: Path) -> dict[str, str]:
     text = _tail_text(log_path)
     return {
-        "iterations": _last_match(text, r"Iterations:\s*(\d+)", "-"),
+        "cycles": _last_match(text, r"Cycles:\s*(\d+)", "-"),
+        "executions": _last_match(
+            text,
+            r"Executions:\s*(\d+)",
+            _last_match(text, r"Iterations:\s*(\d+)", "-"),
+        ),
         "corpus": _last_match(text, r"Corpus size:\s*(\d+)", "-"),
         "crashes": _last_match(text, r"Unique crashes:\s*(\d+)", "-"),
         "execs_per_s": _last_match(text, r"Exec/s:\s*([0-9]+(?:\.[0-9]+)?)", "-"),
@@ -210,7 +217,10 @@ def _parse_worker_status(status_path: Path, log_path: Path) -> dict[str, str]:
         try:
             payload = json.loads(status_path.read_text(encoding="utf-8"))
             return {
-                "iterations": str(payload.get("iteration", "-")),
+                "cycles": str(payload.get("cycle", "-")),
+                "executions": str(
+                    payload.get("execution", payload.get("iteration", "-"))
+                ),
                 "corpus": str(payload.get("corpus_size", "-")),
                 "crashes": str(payload.get("unique_crashes", "-")),
                 "execs_per_s": str(payload.get("execs_per_s", "-")),
@@ -265,10 +275,10 @@ def _build_worker_cmd(config: FuzzerConfig, worker_runs_dir: Path) -> list[str]:
         str(config.max_energy),
     ]
 
-    if config.max_iterations is None:
-        cmd.extend(["--max-iterations", "-1"])
+    if config.max_cycles is None:
+        cmd.extend(["--max-cycles", "-1"])
     else:
-        cmd.extend(["--max-iterations", str(config.max_iterations)])
+        cmd.extend(["--max-cycles", str(config.max_cycles)])
 
     if config.time_limit is None:
         cmd.extend(["--time-limit", "-1"])

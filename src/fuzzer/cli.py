@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 from fuzzer.config import (
@@ -103,10 +104,16 @@ def main() -> int:
 
     # Stopping conditions
     parser.add_argument(
+        "--max-cycles",
+        type=int,
+        default=None,
+        help=f"Max number of cycles (-1 to disable, default: {FuzzerConfig.max_cycles})",
+    )
+    parser.add_argument(
         "--max-iterations",
         type=int,
         default=None,
-        help=f"Max number of iterations (-1 to disable, default: {FuzzerConfig.max_iterations})",
+        help="Deprecated alias for --max-cycles",
     )
     parser.add_argument(
         "--time-limit",
@@ -152,8 +159,25 @@ def main() -> int:
             print(name)
         return 0
 
-    max_iterations = None if args.max_iterations == -1 else args.max_iterations
+    if args.max_cycles is not None and args.max_iterations is not None:
+        parser.error("Use only one of --max-cycles or --max-iterations")
+
+    max_cycles_arg = (
+        None
+        if args.max_cycles == -1
+        else (
+            args.max_cycles
+            if args.max_cycles is not None
+            else (None if args.max_iterations == -1 else args.max_iterations)
+        )
+    )
     time_limit = None if args.time_limit == -1 else args.time_limit
+
+    if args.max_iterations is not None:
+        print(
+            "warning: --max-iterations is deprecated; use --max-cycles instead",
+            file=sys.stderr,
+        )
 
     base = profile_overrides(args.profile) if args.profile is not None else {}
 
@@ -204,10 +228,13 @@ def main() -> int:
             if args.runs_dir is not None
             else base.get("runs_dir", FuzzerConfig.runs_dir)
         ),
-        max_iterations=(
-            max_iterations
-            if max_iterations is not None
-            else base.get("max_iterations", FuzzerConfig.max_iterations)
+        max_cycles=(
+            max_cycles_arg
+            if max_cycles_arg is not None
+            else base.get(
+                "max_cycles",
+                base.get("max_iterations", FuzzerConfig.max_cycles),
+            )
         ),
         time_limit=(
             time_limit

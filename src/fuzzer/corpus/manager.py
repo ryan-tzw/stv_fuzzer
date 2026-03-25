@@ -149,6 +149,14 @@ class CorpusManager:
         """Return the current list of seeds."""
         return list(self._seeds)
 
+    def size(self) -> int:
+        """Return the number of seeds currently in the in-memory corpus."""
+        return len(self._seeds)
+
+    def get(self, index: int) -> SeedInput:
+        """Return a seed by index from the live in-memory corpus."""
+        return self._seeds[index]
+
     def add(self, data: str) -> SeedInput:
         """
         Add an interesting input to the in-memory pool and persist it to the database.

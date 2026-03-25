@@ -63,93 +63,126 @@ class FuzzingEngine:
     def __exit__(self, *args) -> None:
         self.stop()
 
-    def _stop_reason(self, iteration: int, start_time: float) -> str | None:
-        max_iterations = self.config.max_iterations
-        if max_iterations is not None and iteration >= max_iterations:
-            return f"reached max iterations ({max_iterations})"
+    def _cycle_limit_reason(self, cycles: int) -> str | None:
+        max_cycles = self.config.max_cycles
+        if max_cycles is not None and cycles >= max_cycles:
+            return f"reached max cycles ({max_cycles})"
+        return None
 
+    def _time_limit_reason(self, start_time: float) -> str | None:
         time_limit = self.config.time_limit
         if time_limit is not None:
             elapsed = time.monotonic() - start_time
             if elapsed >= time_limit:
                 return f"reached time limit ({time_limit}s)"
-
         return None
 
-    def _process_seed(
-        self, seed, iteration: int, unique_crashes: int
+    def _execute_once(
+        self,
+        *,
+        seed,
+        executions: int,
+        cycle: int,
+        unique_crashes: int,
     ) -> tuple[int, int]:
-        """Run fuzz iterations for one selected seed and update counters."""
-        self.corpus.record_picked(seed)
-        energy = self.scheduler.energy(seed)
+        mutated = self.mutator.mutate(seed.data)
+        run_result = self.executor.run(mutated)
+        self.corpus.record_fuzzed(seed)
 
-        for _ in range(energy):
-            mutated = self.mutator.mutate(seed.data)
-
-            run_result = self.executor.run(mutated)
-            self.corpus.record_fuzzed(seed)
-
-            signal = self.observer.observe(
-                ObservationInput(
-                    stdout=run_result.stdout,
-                    stderr=run_result.stderr,
-                    exit_code=run_result.exit_code,
-                    result=run_result.result,
-                )
-            )
-            add_to_corpus = self.feedback.evaluate(signal)
-            is_crash = self.crash_detector.is_crash(
-                exit_code=run_result.exit_code,
+        signal = self.observer.observe(
+            ObservationInput(
                 stdout=run_result.stdout,
                 stderr=run_result.stderr,
+                exit_code=run_result.exit_code,
+                result=run_result.result,
             )
+        )
+        add_to_corpus = self.feedback.evaluate(signal)
+        is_crash = self.crash_detector.is_crash(
+            exit_code=run_result.exit_code,
+            stdout=run_result.stdout,
+            stderr=run_result.stderr,
+        )
 
-            if is_crash:
-                parsed_crash = getattr(signal, "parsed_crash", None)
-                if parsed_crash is None:
-                    self.logger.log_stop_reason(
-                        "warning: crash detected but observer produced no parsed crash"
-                    )
-                    continue
-
+        execution_id = executions + 1
+        if is_crash:
+            parsed_crash = getattr(signal, "parsed_crash", None)
+            if parsed_crash is None:
+                self.logger.log_stop_reason(
+                    "warning: crash detected but observer produced no parsed crash"
+                )
+            else:
                 is_new = self.db.record_crash(mutated, parsed_crash)
                 if is_new:
                     unique_crashes += 1
-                    self.logger.log_crash(iteration, unique_crashes)
+                    self.logger.log_crash(execution_id, cycle, unique_crashes)
                 else:
-                    self.logger.log_duplicate_crash(iteration)
+                    self.logger.log_duplicate_crash(execution_id, cycle)
 
-            if add_to_corpus:
-                self.corpus.add(mutated)
-                self.logger.log_corpus_add(iteration)
+        if add_to_corpus:
+            self.corpus.add(mutated)
+            self.logger.log_corpus_add(execution_id, cycle)
 
-            iteration += 1
-            self.logger.tick(iteration)
-
-        return iteration, unique_crashes
+        executions = execution_id
+        self.logger.tick(executions=executions, cycles=cycle)
+        return executions, unique_crashes
 
     def run(self) -> None:
         self.corpus.load()
 
-        iteration = 0
+        executions = 0
+        cycles = 0
         unique_crashes = 0
         start_time = time.monotonic()
 
         with self.logger:
-            self.logger.start(corpus_size=len(self.corpus.seeds()))
+            self.logger.start(
+                corpus_size=self.corpus.size(), executions=executions, cycles=cycles
+            )
 
             try:
                 self.start()
                 while True:
-                    stop_reason = self._stop_reason(iteration, start_time)
+                    stop_reason = self._cycle_limit_reason(cycles)
                     if stop_reason is not None:
                         self.logger.log_stop_reason(stop_reason)
                         break
 
-                    seed = self.scheduler.next(self.corpus.seeds())
-                    iteration, unique_crashes = self._process_seed(
-                        seed, iteration, unique_crashes
-                    )
+                    active_cycle = cycles + 1
+                    seed_index = 0
+                    while seed_index < self.corpus.size():
+                        stop_reason = self._time_limit_reason(start_time)
+                        if stop_reason is not None:
+                            self.logger.log_stop_reason(stop_reason)
+                            break
+
+                        seed = self.corpus.get(seed_index)
+                        self.corpus.record_picked(seed)
+                        energy = self.scheduler.energy(seed)
+
+                        for _ in range(energy):
+                            stop_reason = self._time_limit_reason(start_time)
+                            if stop_reason is not None:
+                                self.logger.log_stop_reason(stop_reason)
+                                break
+
+                            executions, unique_crashes = self._execute_once(
+                                seed=seed,
+                                executions=executions,
+                                cycle=active_cycle,
+                                unique_crashes=unique_crashes,
+                            )
+
+                        if stop_reason is not None:
+                            break
+
+                        seed_index += 1
+
+                    if stop_reason is not None:
+                        break
+
+                    cycles = active_cycle
+                    self.logger.tick(executions=executions, cycles=cycles)
 
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")
@@ -158,4 +191,4 @@ class FuzzingEngine:
                 self.stop()
 
         elapsed = time.monotonic() - start_time
-        self.logger.print_summary(iteration, elapsed)
+        self.logger.print_summary(executions=executions, cycles=cycles, elapsed=elapsed)

@@ -84,7 +84,7 @@ class FuzzerConfig:
     runs_dir: Path = Path("runs")
 
     # Stopping conditions (None = disabled)
-    max_iterations: int | None = 1000
+    max_cycles: int | None = None
     time_limit: int | None = 60  # seconds
 
     # Scheduler ("random" or "fast")
@@ -112,12 +112,18 @@ class FuzzerConfig:
             self.blackbox_binary = Path(self.blackbox_binary).resolve()
         self.harness_args = tuple(self.harness_args)
         self.blackbox_args = tuple(self.blackbox_args)
-        self.max_iterations = self._normalise_limit(
-            self.max_iterations,
-            "max_iterations",
-        )
+        self.max_cycles = self._normalise_limit(self.max_cycles, "max_cycles")
         self.time_limit = self._normalise_limit(self.time_limit, "time_limit")
         self._validate_paths()
+
+    @property
+    def max_iterations(self) -> int | None:
+        """Deprecated compatibility alias for max_cycles."""
+        return self.max_cycles
+
+    @max_iterations.setter
+    def max_iterations(self, value: int | None) -> None:
+        self.max_cycles = value
 
     def _validate_paths(self) -> None:
         if not self.project_dir.exists() or not self.project_dir.is_dir():

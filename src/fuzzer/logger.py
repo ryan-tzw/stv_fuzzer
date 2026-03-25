@@ -4,13 +4,13 @@ Rich-based live dashboard for the fuzzing engine.
 Usage:
     logger = FuzzerLogger(run_dir=..., config=...)
     with logger:
-        logger.start(corpus_size=n)
+        logger.start(corpus_size=n, executions=0, cycles=0)
         # in loop:
-        logger.tick(iteration)
-        logger.log_corpus_add(iteration)
-        logger.log_crash(iteration, unique_crashes)
-        logger.log_duplicate_crash(iteration)
-    logger.print_summary(iteration, elapsed)
+        logger.tick(executions, cycles)
+        logger.log_corpus_add(execution, cycle)
+        logger.log_crash(execution, cycle, unique_crashes)
+        logger.log_duplicate_crash(execution, cycle)
+    logger.print_summary(executions, cycles, elapsed)
 """
 
 import json
@@ -32,7 +32,8 @@ from fuzzer.config import FuzzerConfig
 
 @dataclass
 class FuzzerState:
-    iteration: int = 0
+    execution: int = 0
+    cycle: int = 0
     corpus_size: int = 0
     unique_crashes: int = 0
     start_time: float | None = None
@@ -48,7 +49,7 @@ class FuzzerState:
         if self.start_time is None:
             return 0.0
         elapsed = time.monotonic() - self.start_time
-        return self.iteration / elapsed if elapsed > 0 else 0.0
+        return self.execution / elapsed if elapsed > 0 else 0.0
 
 
 class FuzzerDisplay:
@@ -58,9 +59,9 @@ class FuzzerDisplay:
         self._state = state
 
     def render_header(self) -> Panel:
-        max_iterations = (
-            str(self._config.max_iterations)
-            if self._config.max_iterations is not None
+        max_cycles = (
+            str(self._config.max_cycles)
+            if self._config.max_cycles is not None
             else "disabled"
         )
         time_limit = (
@@ -77,7 +78,7 @@ class FuzzerDisplay:
         grid.add_row("Harness:", self._config.harness)
         grid.add_row(
             "Stop conditions:",
-            f"max_iterations={max_iterations}  time_limit={time_limit}",
+            f"max_cycles={max_cycles}  time_limit={time_limit}",
         )
         grid.add_row("Scheduler:", self._config.scheduler)
         return Panel(
@@ -88,7 +89,8 @@ class FuzzerDisplay:
         grid = Table.grid(padding=(0, 3))
         grid.add_column(style="bold", min_width=18)
         grid.add_column(justify="right", style="bright_white")
-        grid.add_row("Iterations:", str(self._state.iteration))
+        grid.add_row("Cycles:", str(self._state.cycle))
+        grid.add_row("Executions:", str(self._state.execution))
         grid.add_row("Corpus size:", str(self._state.corpus_size))
         grid.add_row("Unique crashes:", str(self._state.unique_crashes))
         grid.add_row("Elapsed:", self._state.elapsed_str())
@@ -154,39 +156,45 @@ class FuzzerLogger:
     # Public API
     # ------------------------------------------------------------------
 
-    def start(self, corpus_size: int) -> None:
+    def start(self, corpus_size: int, executions: int = 0, cycles: int = 0) -> None:
         """Call once before entering the fuzzing loop."""
         self._state.start_time = time.monotonic()
         self._state.corpus_size = corpus_size
+        self._state.execution = executions
+        self._state.cycle = cycles
         self._write_status(running=True)
 
-    def tick(self, iteration: int) -> None:
-        """Call each iteration to keep the iteration counter current."""
-        self._state.iteration = iteration
+    def tick(self, executions: int, cycles: int) -> None:
+        """Call after each execution and cycle transition to keep counters current."""
+        self._state.execution = executions
+        self._state.cycle = cycles
         self._write_status(running=True)
 
-    def log_corpus_add(self, iteration: int) -> None:
-        self._state.iteration = iteration
+    def log_corpus_add(self, execution: int, cycle: int) -> None:
+        self._state.execution = execution
+        self._state.cycle = cycle
         self._state.corpus_size += 1
         self._push_event(
-            f"[iter {iteration}] New coverage — corpus size: {self._state.corpus_size}",
+            f"[cycle {cycle} | exec {execution}] New coverage — corpus size: {self._state.corpus_size}",
             style="green",
         )
         self._write_status(running=True)
 
-    def log_crash(self, iteration: int, unique_crashes: int) -> None:
-        self._state.iteration = iteration
+    def log_crash(self, execution: int, cycle: int, unique_crashes: int) -> None:
+        self._state.execution = execution
+        self._state.cycle = cycle
         self._state.unique_crashes = unique_crashes
         self._push_event(
-            f"[iter {iteration}] New unique crash! Total unique: {unique_crashes}",
+            f"[cycle {cycle} | exec {execution}] New unique crash! Total unique: {unique_crashes}",
             style="bold red",
         )
         self._write_status(running=True)
 
-    def log_duplicate_crash(self, iteration: int) -> None:
-        self._state.iteration = iteration
+    def log_duplicate_crash(self, execution: int, cycle: int) -> None:
+        self._state.execution = execution
+        self._state.cycle = cycle
         self._push_event(
-            f"[iter {iteration}] Duplicate crash (not recorded again)",
+            f"[cycle {cycle} | exec {execution}] Duplicate crash (not recorded again)",
             style="dim red",
         )
         self._write_status(running=True)
@@ -195,7 +203,7 @@ class FuzzerLogger:
         self._push_event(f"Stopped — {reason}", style="bold yellow")
         self._write_status(running=True, stop_reason=reason)
 
-    def print_summary(self, iteration: int, elapsed: float) -> None:
+    def print_summary(self, executions: int, cycles: int, elapsed: float) -> None:
         """Print a final summary below the dashboard after Live exits."""
         elapsed_str = str(timedelta(seconds=int(elapsed)))
         self._console.print()
@@ -203,7 +211,8 @@ class FuzzerLogger:
         summary = Table.grid(padding=(0, 2))
         summary.add_column(style="bold")
         summary.add_column(style="cyan")
-        summary.add_row("Iterations:", str(iteration))
+        summary.add_row("Cycles:", str(cycles))
+        summary.add_row("Executions:", str(executions))
         summary.add_row("Corpus size:", str(self._state.corpus_size))
         summary.add_row("Unique crashes:", str(self._state.unique_crashes))
         summary.add_row("Elapsed:", elapsed_str)
@@ -226,7 +235,9 @@ class FuzzerLogger:
             return
 
         payload = {
-            "iteration": self._state.iteration,
+            "cycle": self._state.cycle,
+            "execution": self._state.execution,
+            "iteration": self._state.execution,
             "corpus_size": self._state.corpus_size,
             "unique_crashes": self._state.unique_crashes,
             "execs_per_s": round(self._state.execs_per_s(), 2),
