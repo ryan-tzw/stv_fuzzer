@@ -88,6 +88,12 @@ class FuzzerConfig:
     blackbox_binary: Path | None = None
     blackbox_input_flag: str = "--ipstr"
     blackbox_args: tuple[str, ...] = ()
+    diff_use_whitebox_coverage: bool = True
+    diff_use_blackbox_nonzero_exit: bool = False
+    diff_use_blackbox_traceback: bool = False
+    diff_use_exit_code_mismatch: bool = False
+    diff_use_blackbox_stderr: bool = False
+    diff_use_whitebox_nonzero_exit: bool = False
 
     # Output
     runs_dir: Path = Path("runs")

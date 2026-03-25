@@ -57,7 +57,14 @@ def build_engine_components(config: FuzzerConfig) -> EngineComponents:
                 ),
             ),
             observer=DifferentialObserver(config.project_dir),
-            feedback=DifferentialFeedback(),
+            feedback=DifferentialFeedback(
+                use_whitebox_coverage=config.diff_use_whitebox_coverage,
+                use_blackbox_nonzero_exit=config.diff_use_blackbox_nonzero_exit,
+                use_blackbox_traceback=config.diff_use_blackbox_traceback,
+                use_exit_code_mismatch=config.diff_use_exit_code_mismatch,
+                use_blackbox_stderr=config.diff_use_blackbox_stderr,
+                use_whitebox_nonzero_exit=config.diff_use_whitebox_nonzero_exit,
+            ),
             crash_detector=ExitCodeOrOutputCrashDetector(),
         )
 
