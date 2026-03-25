@@ -22,7 +22,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
     "ipv4_parser": {
         "project_dir": Path("targets/_reference/ipyparse"),
         "harness": "ipyparse",
-        "corpus": "json",
+        "corpus": "ipv4",
         "mode": "differential",
         "harness_args": ("--family", "ipv4"),
         "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv4-parser"),
@@ -31,7 +31,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
     "ipv6_parser": {
         "project_dir": Path("targets/_reference/ipyparse"),
         "harness": "ipyparse",
-        "corpus": "json",
+        "corpus": "ipv6",
         "mode": "differential",
         "harness_args": ("--family", "ipv6"),
         "blackbox_binary": Path("targets/IPv4-IPv6-parser/bin/linux-ipv6-parser"),
@@ -40,7 +40,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
     "cidrize": {
         "project_dir": Path("targets/_reference/cidrize"),
         "harness": "cidrize",
-        "corpus": "json",
+        "corpus": "ipv4",
         "mode": "differential",
         "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
         "blackbox_input_flag": "--ipstr",

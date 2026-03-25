@@ -2,6 +2,7 @@
 Corpus manager: loads seed inputs, tracks metadata, and persists via the database.
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,7 +24,7 @@ class SeedInput:
 
 
 class CorpusManager:
-    def __init__(self, corpus_dir: str | Path, db: FuzzerDatabase):
+    def __init__(self, corpus_dir: str | Path, db: "FuzzerDatabase"):
         """
         corpus_dir: directory of initial seed files to load at startup (only used on first run).
         db:         database instance used to persist and reload seeds across runs.
@@ -43,15 +44,38 @@ class CorpusManager:
             # First run — load from seed files and persist to DB
             for path in sorted(self.corpus_dir.iterdir()):
                 if path.is_file():
-                    data = path.read_text(encoding="utf-8")
-                    seed = SeedInput(data=data)
-                    self._db.save_seed(seed)
-                    self._seeds.append(seed)
+                    for data in self._load_seed_file(path):
+                        seed = SeedInput(data=data)
+                        self._db.save_seed(seed)
+                        self._seeds.append(seed)
 
         if not self._seeds:
             raise ValueError(
                 f"No seed files found in corpus directory: {self.corpus_dir}"
             )
+
+    def _load_seed_file(self, path: Path) -> list[str]:
+        if path.suffix.lower() != ".json":
+            return [path.read_text(encoding="utf-8")]
+
+        text = path.read_text(encoding="utf-8")
+        payload = json.loads(text)
+
+        if isinstance(payload, list):
+            seeds: list[str] = []
+            for item in payload:
+                if isinstance(item, str):
+                    seeds.append(item)
+                else:
+                    seeds.append(
+                        json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                    )
+            return seeds
+
+        if isinstance(payload, str):
+            return [payload]
+
+        return [json.dumps(payload, ensure_ascii=False, separators=(",", ":"))]
 
     def seeds(self) -> list[SeedInput]:
         """Return the current list of seeds."""
