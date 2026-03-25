@@ -1,4 +1,6 @@
-start: ipv4
-ipv4: octet "." octet "." octet "." octet
-octet: DIGIT | DIGIT DIGIT | DIGIT DIGIT DIGIT
-DIGIT: "0".."9"
+?start: ipv4_like
+ipv4_like: octet "." octet "." octet "." octet
+octet: DIGIT
+     | DIGIT DIGIT
+     | DIGIT DIGIT DIGIT
+DIGIT: /[0-9]/
