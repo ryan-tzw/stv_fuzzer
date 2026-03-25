@@ -53,7 +53,7 @@ def main() -> int:
             _ensure_ipparse_alias()
             from ipyparse.ipv6 import IPv6_WholeString  # type: ignore
 
-            return IPv6_WholeString.parse_string(s)[0]
+            return IPv6_WholeString.parse_string(s, parse_all=True)[0]
 
         if family == "ipv4":
             parsed = parse_ipv4()

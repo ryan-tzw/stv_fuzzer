@@ -15,15 +15,9 @@ def _stable_print(obj: Any) -> None:
 def main() -> int:
     """
     JSON decoder harness for fuzzing.
-    Reads JSON input from stdin (required).
+    Reads JSON input from stdin.
     """
     raw = sys.stdin.buffer.read()
-    if not raw:
-        sys.stderr.write(
-            "Error: No input provided. JSON input is required via stdin.\n"
-        )
-        return 1
-
     s = raw.decode("utf-8", errors="replace")
 
     try:

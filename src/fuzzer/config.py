@@ -44,7 +44,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
         "mode": "differential",
         "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
         "blackbox_input_flag": "--ipstr",
-        "blackbox_args": ("--func", "cidrize"),
+        "blackbox_args": ("--func", "cidrize", "--raise-errors"),
     },
 }
 
