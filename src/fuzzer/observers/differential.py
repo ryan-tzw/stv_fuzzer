@@ -47,8 +47,10 @@ class DifferentialObserver:
         whitebox_exit = result.whitebox.exit_code
         blackbox_stdout = result.blackbox.stdout or ""
         blackbox_stderr = result.blackbox.stderr or ""
+        parsed_stderr = parse_crash(blackbox_stderr)
+        parsed_stdout = parse_crash(blackbox_stdout)
         parsed_crash = self._ensure_parsed_crash(
-            parse_crash(blackbox_stderr),
+            self._choose_best_parsed_crash(parsed_stderr, parsed_stdout),
             exit_code=blackbox_exit,
             stdout=blackbox_stdout,
             stderr=blackbox_stderr,
@@ -62,9 +64,36 @@ class DifferentialObserver:
             whitebox_nonzero_exit=whitebox_exit != 0,
             exit_code_mismatch=blackbox_exit != whitebox_exit,
             blackbox_has_stderr=bool(blackbox_stderr.strip()),
-            blackbox_has_traceback="Traceback" in blackbox_stderr,
+            blackbox_has_traceback=("Traceback" in blackbox_stderr)
+            or ("Traceback" in blackbox_stdout),
             parsed_crash=parsed_crash,
         )
+
+    @classmethod
+    def _choose_best_parsed_crash(
+        cls, parsed_stderr: ParsedCrash, parsed_stdout: ParsedCrash
+    ) -> ParsedCrash:
+        """Choose the richer parsed crash metadata; ties prefer stderr."""
+        stderr_score = cls._parsed_crash_quality_score(parsed_stderr)
+        stdout_score = cls._parsed_crash_quality_score(parsed_stdout)
+        if stderr_score >= stdout_score:
+            return parsed_stderr
+        return parsed_stdout
+
+    @staticmethod
+    def _parsed_crash_quality_score(parsed: ParsedCrash) -> int:
+        score = 0
+        if parsed.bug_category.strip().lower() != "unknown":
+            score += 3
+        if parsed.file != "unknown" and parsed.line != -1:
+            score += 2
+        if parsed.exception_type.strip():
+            score += 1
+        if parsed.exception_message.strip():
+            score += 1
+        if parsed.traceback.strip():
+            score += 1
+        return score
 
     @staticmethod
     def _ensure_parsed_crash(
