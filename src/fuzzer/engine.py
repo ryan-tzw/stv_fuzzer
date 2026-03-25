@@ -96,6 +96,7 @@ class FuzzingEngine:
             add_to_corpus = self.feedback.evaluate(signal)
             is_crash = self.crash_detector.is_crash(
                 exit_code=run_result.exit_code,
+                stdout=run_result.stdout,
                 stderr=run_result.stderr,
             )
 

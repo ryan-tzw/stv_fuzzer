@@ -1,5 +1,10 @@
 from .coverage import CoverageFeedback
-from .crash import CrashDetector, ExitCodeCrashDetector, StderrPrefixCrashDetector
+from .crash import (
+    CrashDetector,
+    ExitCodeCrashDetector,
+    ExitCodeOrOutputCrashDetector,
+    StderrPrefixCrashDetector,
+)
 from .differential import DifferentialFeedback
 
 __all__ = [
@@ -7,5 +12,6 @@ __all__ = [
     "CrashDetector",
     "DifferentialFeedback",
     "ExitCodeCrashDetector",
+    "ExitCodeOrOutputCrashDetector",
     "StderrPrefixCrashDetector",
 ]

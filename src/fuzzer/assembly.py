@@ -22,6 +22,7 @@ from fuzzer.feedback import (
     CrashDetector,
     DifferentialFeedback,
     ExitCodeCrashDetector,
+    ExitCodeOrOutputCrashDetector,
 )
 from fuzzer.observers import DifferentialObserver, InProcessCoverageObserver
 
@@ -58,7 +59,7 @@ def build_engine_components(config: FuzzerConfig) -> EngineComponents:
             ),
             observer=DifferentialObserver(config.project_dir),
             feedback=DifferentialFeedback(),
-            crash_detector=ExitCodeCrashDetector(),
+            crash_detector=ExitCodeOrOutputCrashDetector(),
         )
 
     return EngineComponents(
