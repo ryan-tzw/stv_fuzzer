@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from fuzzer.config import FuzzerConfig
-from fuzzer.core import Mutator
-from fuzzer.core.mutator import build_strategy
-from fuzzer.core.scheduler import FastScheduler, RandomScheduler, Scheduler
+from fuzzer.mutator import Mutator, build_strategy
+from fuzzer.scheduler import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import (
     BinaryExecutor,
     DifferentialExecutor,

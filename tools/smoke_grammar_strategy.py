@@ -10,7 +10,7 @@ if str(SRC_DIR) not in sys.path:
 
 
 def main() -> int:
-    from fuzzer.core.mutator import Mutator, build_strategy
+    from fuzzer.mutator import Mutator, build_strategy
 
     mutator = Mutator(strategy=build_strategy("grammar_subtree"))
 

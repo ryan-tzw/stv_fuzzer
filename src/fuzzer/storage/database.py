@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fuzzer.core.corpus import SeedInput, SeedMetadata
+from fuzzer.corpus import SeedInput, SeedMetadata
 from fuzzer.observers.input import ParsedCrash
 
 

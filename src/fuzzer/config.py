@@ -9,7 +9,7 @@ from typing import Any
 # Standard base directories relative to this package
 _PACKAGE_DIR = Path(__file__).parent
 HARNESSES_DIR = _PACKAGE_DIR / "harnesses"
-CORPUS_DIR = _PACKAGE_DIR / "core" / "corpus"
+CORPUS_DIR = _PACKAGE_DIR / "corpus"
 
 
 PROFILE_CONFIGS: dict[str, dict[str, Any]] = {

@@ -8,7 +8,7 @@ from fuzzer.config import (
     available_profiles,
     profile_overrides,
 )
-from fuzzer.core.mutator import AVAILABLE_STRATEGIES
+from fuzzer.mutator import AVAILABLE_STRATEGIES
 from fuzzer.engine import FuzzingEngine
 from fuzzer.parallel import run_parallel
 

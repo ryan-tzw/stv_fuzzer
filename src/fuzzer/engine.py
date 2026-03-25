@@ -7,7 +7,7 @@ from datetime import datetime
 
 from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
-from fuzzer.core import CorpusManager
+from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
