@@ -3,6 +3,7 @@ SQLite-backed storage for corpus seeds and crash reports.
 """
 
 import sqlite3
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,15 @@ from fuzzer.observers.input import ParsedCrash
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_exception_message(message: str) -> str:
+    """Normalize crash messages for stable deduplication across minor formatting noise."""
+    text = _WHITESPACE_RE.sub(" ", message or "")
+    return text.strip().lower()
 
 
 class FuzzerDatabase:
@@ -41,31 +51,45 @@ class FuzzerDatabase:
                 traceback           TEXT    NOT NULL,
                 bug_category        TEXT    NOT NULL DEFAULT 'unknown',
                 category_source     TEXT    NOT NULL DEFAULT 'traceback_fallback',
+                dedup_key           TEXT,
                 data                TEXT    NOT NULL,
                 count               INTEGER NOT NULL DEFAULT 1,
                 first_seen_at       TEXT    NOT NULL,
                 last_seen_at        TEXT    NOT NULL
             );
-
-            CREATE UNIQUE INDEX IF NOT EXISTS crashes_dedup
-                ON crashes (exception_type, file, line);
         """)
-        self._ensure_crash_category_columns()
+        self._migrate_crash_schema()
         self._conn.commit()
 
-    def _ensure_crash_category_columns(self) -> None:
-        """Backfill crash category columns for pre-migration databases."""
+    def _migrate_crash_schema(self) -> None:
+        """Apply forward-only schema migrations for crash metadata and dedup."""
         cursor = self._conn.execute("PRAGMA table_info(crashes)")
         existing_columns = {row[1] for row in cursor.fetchall()}
 
         required_columns = {
             "bug_category": "TEXT NOT NULL DEFAULT 'unknown'",
             "category_source": "TEXT NOT NULL DEFAULT 'traceback_fallback'",
+            "dedup_key": "TEXT",
         }
 
         for col, ddl in required_columns.items():
             if col not in existing_columns:
                 self._conn.execute(f"ALTER TABLE crashes ADD COLUMN {col} {ddl}")
+
+        # Replace legacy coarse dedup index with semantic fingerprint dedup.
+        self._conn.execute("DROP INDEX IF EXISTS crashes_dedup")
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS crashes_dedup_key ON crashes (dedup_key)"
+        )
+
+    @staticmethod
+    def _build_dedup_key(parsed: ParsedCrash) -> str:
+        normalized_message = _normalize_exception_message(parsed.exception_message)
+        category = (parsed.bug_category or "").strip().lower()
+        exc_type = (parsed.exception_type or "").strip()
+        file_path = (parsed.file or "").strip()
+        line = parsed.line
+        return f"{category}|{exc_type}|{file_path}|{line}|{normalized_message}"
 
     # ------------------------------------------------------------------
     # Corpus
@@ -121,15 +145,17 @@ class FuzzerDatabase:
 
     def record_crash(self, data: str, parsed: ParsedCrash) -> bool:
         """
-        Record a crash, deduplicating by (exception_type, file, line).
+        Record a crash using semantic dedup key:
+        (bug_category, exception_type, file, line, normalized_exception_message).
         Increments count and updates last_seen_at for duplicates.
         Returns True if this is a new unique crash, False if it's a duplicate.
         """
         now = _now()
+        dedup_key = self._build_dedup_key(parsed)
 
         existing = self._conn.execute(
-            "SELECT id FROM crashes WHERE exception_type = ? AND file = ? AND line = ?",
-            (parsed.exception_type, parsed.file, parsed.line),
+            "SELECT id FROM crashes WHERE dedup_key = ?",
+            (dedup_key,),
         ).fetchone()
 
         if existing:
@@ -151,12 +177,13 @@ class FuzzerDatabase:
                         traceback,
                         bug_category,
                         category_source,
+                        dedup_key,
                         data,
                         count,
                         first_seen_at,
                         last_seen_at
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
                     parsed.exception_type,
@@ -166,6 +193,7 @@ class FuzzerDatabase:
                     parsed.traceback,
                     parsed.bug_category,
                     parsed.category_source,
+                    dedup_key,
                     data,
                     now,
                     now,
