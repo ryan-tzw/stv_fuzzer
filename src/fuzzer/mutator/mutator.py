@@ -2,11 +2,11 @@
 Mutator: applies a mutation strategy to produce a mutated input.
 """
 
-from fuzzer.mutator.base import MutationStrategy
+from fuzzer.mutator.base import BaseMutator, MutationStrategy
 from fuzzer.mutator.string.strategies import RandomSingleStrategy
 
 
-class Mutator:
+class Mutator(BaseMutator):
     def __init__(self, strategy: MutationStrategy | None = None):
         self.strategy = strategy or RandomSingleStrategy()
 

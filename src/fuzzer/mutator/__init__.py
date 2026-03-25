@@ -1,4 +1,4 @@
-from .base import MutationOperation, MutationStrategy
+from .base import BaseMutator, MutationOperation, MutationStrategy
 from .mutator import Mutator
 from .string.operations import (
     DeleteChar,
@@ -16,6 +16,7 @@ from .tree.strategies import GrammarSubtreeStrategy
 
 __all__ = [
     "Mutator",
+    "BaseMutator",
     "AVAILABLE_STRATEGIES",
     "build_strategy",
     "MutationStrategy",

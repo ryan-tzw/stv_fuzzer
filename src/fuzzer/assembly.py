@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fuzzer.config import FuzzerConfig
-from fuzzer.mutator import Mutator, build_strategy
+from fuzzer.mutator import BaseMutator, Mutator, build_strategy
 from fuzzer.schedulers import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import (
     BinaryExecutor,
@@ -28,7 +28,7 @@ from fuzzer.observers import DifferentialObserver, InProcessCoverageObserver
 
 @dataclass
 class EngineComponents:
-    mutator: Mutator
+    mutator: BaseMutator
     scheduler: Scheduler
     executor: Executor
     observer: Any
@@ -83,5 +83,5 @@ def _build_scheduler(config: FuzzerConfig) -> Scheduler:
     raise ValueError(f"Unknown scheduler: {config.scheduler!r}")
 
 
-def _build_mutator(config: FuzzerConfig) -> Mutator:
+def _build_mutator(config: FuzzerConfig) -> BaseMutator:
     return Mutator(strategy=build_strategy(config.mutation_strategy))

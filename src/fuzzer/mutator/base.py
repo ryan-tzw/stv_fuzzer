@@ -3,6 +3,13 @@
 from abc import ABC, abstractmethod
 
 
+class BaseMutator(ABC):
+    @abstractmethod
+    def mutate(self, data: str) -> str:
+        """Mutate input text and return the mutated output."""
+        ...
+
+
 class MutationOperation(ABC):
     @abstractmethod
     def mutate(self, data: str) -> str:
