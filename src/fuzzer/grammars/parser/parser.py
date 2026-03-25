@@ -158,7 +158,7 @@ if __name__ == "__main__":
     # json test
     print("\nJSON PARSER TESTS")
     print("-" * 60)
-    json_parser = jsonParser(ANTLR_DIR)
+    json_parser = create_parser("json", ANTLR_DIR)
     json_tests = [
         '{"name": "Alice", "age": 30}',
         '{"a": 1, "b": true, "c": null}',
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     # ip_test
     print("\nIP PARSER TESTS")
     print("-" * 60)
-    ip_parser = ipParser(ANTLR_DIR)
+    ip_parser = create_parser("ip", ANTLR_DIR)
     ip_tests = [
         # IPv4 allowed inputs
         "0.0.0.0",
@@ -226,6 +226,36 @@ if __name__ == "__main__":
             print("AST:", ast)
             reconstructed = ip_parser.unparse(ast)
             print("Reconstructed:", reconstructed)
+        except Exception as e:
+            print("Parse failed:", e)
+
+    print("\n" + "=" * 60)
+
+    print("\nARITHMETIC PARSER TESTS (using GenericAstBuilder + GenericUnparser)")
+    print("-" * 60)
+    arith_parser = create_parser("arithmetic", ANTLR_DIR)
+
+    arith_tests = [
+        "1+2*3",
+        "(4-5)/6",
+        "10",
+        "2*(3+4)",
+        "100-20+3*4/2",
+        "(1+2)*(3-4)",
+        "42/7+8*9",
+        "123+456*789-0",
+        "(10+20)*(30/5)-7",
+    ]
+
+    for test in arith_tests:
+        print("\nInput:", test)
+        try:
+            ast = arith_parser.parse(test)
+            print("AST:", ast)
+            reconstructed = arith_parser.unparse(ast)
+            print("Reconstructed:", reconstructed)
+            # Quick validation
+            print("Round-trip OK" if reconstructed == test else "Round-trip MISMATCH!")
         except Exception as e:
             print("Parse failed:", e)
 

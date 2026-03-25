@@ -123,17 +123,19 @@ class GenericGrammarOperations(GrammarOperations):
 
         Subclasses should override for grammar-specific operations.
         """
-        # Find all internal nodes (with children)
-        internal_nodes = self.internal_nodes(root)
-
-        if not internal_nodes:
-            return False
-
-        # Try to shuffle each one
-        self.rng.shuffle(internal_nodes)
-        for node in internal_nodes:
-            if self.shuffle.mutate(node, self.rng):
+        if self.rng.random() < 0.8:
+            if self.apply_type_aware_crossover(root):
                 return True
+
+        if self.should_produce_malformed() or self.rng.random() < 0.2:
+            internal_nodes = self.internal_nodes(root)
+            if not internal_nodes:
+                return False
+
+            self.rng.shuffle(internal_nodes)
+            for node in internal_nodes:
+                if self.shuffle.mutate(node, self.rng):
+                    return True
 
         return False
 
@@ -212,3 +214,126 @@ class GenericGrammarOperations(GrammarOperations):
             return False
         # Check if all characters are hex digits
         return all(c in "0123456789abcdefABCDEF" for c in text)
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    from ..parser.parser import create_parser
+
+    ANTLR_DIR = (Path(__file__).parent.parent / "antlr").resolve()
+
+    print("=" * 60)
+    print("\nARITHMETIC GENERIC OPERATIONS TESTS")
+    print("-" * 60)
+
+    arith_parser = create_parser("arithmetic", ANTLR_DIR)
+    ops = GenericGrammarOperations(rng_seed=42, validity_mode=0)
+
+    arith_tests = [
+        "1+2*3",
+        "(4-5)/6",
+        "10",
+        "2*(3+4)",
+        "100-20+3*4/2",
+        "(1+2)*(3-4)",
+        "42/7+8*9",
+        "123+456*789-0",
+        "(10+20)*(30/5)-7",
+    ]
+
+    print("\n=== SANITY: PARSE → UNPARSE ===")
+    for expr in arith_tests:
+        print(f"\nInput     : {expr}")
+        try:
+            ast = arith_parser.parse(expr)
+            out = arith_parser.unparse(ast)
+            print(f"Unparsed  : {out}")
+        except Exception as e:
+            print(f"FAILED    : {e}")
+
+    print("\n=== TOKEN MUTATION TESTS ===")
+    for expr in arith_tests:
+        print(f"\nOriginal  : {expr}")
+        try:
+            ast = arith_parser.parse(expr)
+
+            mutated = ops.clone(ast)
+            success = ops.apply_token_mutation(mutated)
+
+            print(f"Mutation applied: {success}")
+            out = arith_parser.unparse(mutated)
+            print(f"Mutated   : {out}")
+
+            # Re-parse validation
+            try:
+                arith_parser.parse(out)
+                print("Re-parse  : OK")
+            except Exception:
+                print("Re-parse  : FAILED")
+
+        except Exception as e:
+            print(f"FAILED    : {e}")
+
+    print("\n=== STRUCTURE MUTATION TESTS ===")
+    for expr in arith_tests:
+        print(f"\nOriginal  : {expr}")
+        try:
+            ast = arith_parser.parse(expr)
+
+            mutated = ops.clone(ast)
+            success = ops.apply_structure_mutation(mutated)
+
+            print(f"Mutation applied: {success}")
+            out = arith_parser.unparse(mutated)
+            print(f"Mutated   : {out}")
+
+            # Re-parse validation
+            try:
+                arith_parser.parse(out)
+                print("Re-parse  : OK")
+            except Exception:
+                print("Re-parse  : FAILED")
+
+        except Exception as e:
+            print(f"FAILED    : {e}")
+
+    print("\n=== FULL MUTATION (mutate) ===")
+    for expr in arith_tests:
+        print(f"\nSeed Input: {expr}")
+        try:
+            ast = arith_parser.parse(expr)
+
+            for i in range(5):
+                ast = ops.mutate(ast, structure_bias=0.5)
+                out = arith_parser.unparse(ast)
+
+                print(f"\nIteration {i + 1}: {out}")
+
+                # Validate
+                try:
+                    arith_parser.parse(out)
+                    print("Re-parse  : OK")
+                except Exception:
+                    print("Re-parse  : FAILED")
+
+        except Exception as e:
+            print(f"FAILED    : {e}")
+
+    print("\n=== STRESS TEST (FUZZ LOOP) ===")
+    base = "1+2*3-4/5"
+    try:
+        ast = arith_parser.parse(base)
+
+        for i in range(10):
+            ast = ops.mutate(ast)
+            out = arith_parser.unparse(ast)
+
+            print(f"{i:02d}: {out}")
+
+            try:
+                arith_parser.parse(out)
+            except Exception:
+                print("Re-parse: FAILED")
+
+    except Exception as e:
+        print(f"FAILED: {e}")

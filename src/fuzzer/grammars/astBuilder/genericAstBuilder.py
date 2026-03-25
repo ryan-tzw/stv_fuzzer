@@ -176,3 +176,42 @@ class GenericAstBuilder(ParseTreeVisitor):
             return f"Token_{text}"
 
         return "Token"
+
+
+if __name__ == "__main__":
+    from antlr4 import InputStream, CommonTokenStream
+
+    from ..antlr.arithmetic.arithmeticLexer import arithmeticLexer
+    from ..antlr.arithmetic.arithmeticParser import arithmeticParser
+
+    def parse_arithmetic(expr: str):
+        input_stream = InputStream(expr)
+        lexer = arithmeticLexer(input_stream)
+        token_stream = CommonTokenStream(lexer)
+        parser = arithmeticParser(token_stream)
+
+        tree = parser.expr()
+
+        builder = GenericAstBuilder(parser_class=arithmeticParser)
+        ast = builder.visit(tree)
+        return ast
+
+    test_inputs = [
+        "1+2*3",
+        "(4-5)/6",
+        "10",
+        "2*(3+4)",
+        "100-20+3*4/2",
+        "(1+2)*(3-4)",
+        "42/7+8*9",
+    ]
+
+    for expr in test_inputs:
+        print("=" * 60)
+        print(f"Input : {expr}")
+        try:
+            ast = parse_arithmetic(expr)
+            print(f"AST   : {ast}")
+        except Exception as e:
+            print(f"ERROR : {e}")
+        print()

@@ -6,11 +6,14 @@ import importlib.util
 import inspect
 from pathlib import Path
 
+from math import inf
+from grammarinator.runtime import RuleSize
+
 
 class GrammarSeedGenerator:
     """Dynamically loads Grammarinator classes to generate valid initial seeds."""
 
-    def __init__(self, target: str, generator_dir: str | Path):
+    def __init__(self, target: str, generator_dir: str | Path, max_depth: int = 20):
         self.target = target.lower()
         self.generator_dir = Path(generator_dir).resolve()
 
@@ -30,7 +33,9 @@ class GrammarSeedGenerator:
 
         self.GeneratorClass = getattr(generator_mod, f"{self.prefix}Generator")
 
-        self.generator = self.GeneratorClass()
+        self.generator = self.GeneratorClass(
+            limit=RuleSize(depth=max_depth, tokens=inf)
+        )
         self.start_rule = self._infer_start_rule()
 
     def _discover_prefix(self) -> str:
@@ -79,4 +84,9 @@ if __name__ == "__main__":
     print("\nIP Seeds:")
     ip_gen = GrammarSeedGenerator("ip", GENERATOR_DIR)
     for seed in ip_gen.generate(count=2):
+        print(f"  {seed}")
+
+    print("\narithmetic Seeds:")
+    arith_gen = GrammarSeedGenerator("arithmetic", GENERATOR_DIR, max_depth=15)
+    for seed in arith_gen.generate(count=2):
         print(f"  {seed}")

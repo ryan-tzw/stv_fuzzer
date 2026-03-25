@@ -31,6 +31,26 @@ class AstMutationOperation(ABC):
         pass
 
 
+class GrammarAwareOperation(AstMutationOperation):
+    """
+    Base class for mutations that only apply to specific grammar rules.
+    This prevents 'blind' mutations on incompatible node types.
+    """
+
+    def __init__(self, target_rule_types: list[str]):
+        self.target_rule_types = target_rule_types
+
+    def mutate(self, node: AstNode, rng: random.Random) -> bool:
+        if node.type not in self.target_rule_types:
+            return False
+        return self.apply_grammar_mutation(node, rng)
+
+    @abstractmethod
+    def apply_grammar_mutation(self, node: AstNode, rng: random.Random) -> bool:
+        """Apply the specific mutation known to be safe for this rule type."""
+        pass
+
+
 # AST Token Operation Interfaces
 class TokenMutationOperation(ABC):
     """Base class for textual token mutations."""
@@ -87,6 +107,29 @@ class SwapTwoChildren(AstMutationOperation):
             return False
         i, j = rng.sample(range(len(node.children)), 2)
         node.children[i], node.children[j] = node.children[j], node.children[i]
+        return True
+
+
+class CommutativeSwap(GrammarAwareOperation):
+    """
+    Safely swaps operands of a binary expression (e.g., 1+2 -> 2+1)
+    while keeping the operator in the middle.
+    """
+
+    def __init__(
+        self, target_rule_types: list[str], left_idx: int = 0, right_idx: int = 2
+    ):
+        super().__init__(target_rule_types)
+        self.left_idx = left_idx
+        self.right_idx = right_idx
+
+    def apply_grammar_mutation(self, node: AstNode, rng: random.Random) -> bool:
+        if len(node.children) <= max(self.left_idx, self.right_idx):
+            return False
+        node.children[self.left_idx], node.children[self.right_idx] = (
+            node.children[self.right_idx],
+            node.children[self.left_idx],
+        )
         return True
 
 
@@ -178,6 +221,29 @@ class GrammarOperations(ABC):
         else:  # HEAVILY_MALFORMED
             return self.rng.random() < 0.70  # ~70% chance
         return False
+
+    def apply_type_aware_crossover(self, root: AstNode) -> bool:
+        """
+        Swaps two subtrees of the exact same grammar rule type.
+        """
+        internal_nodes = self.internal_nodes(root)
+        if len(internal_nodes) < 2:
+            return False
+        # Pick a target to be replaced
+        target_node = self.rng.choice(internal_nodes)
+        # Find all other nodes of the same type
+        matching_nodes = self.find_nodes(
+            root,
+            predicate=lambda n: n.type == target_node.type and n is not target_node,
+        )
+        if not matching_nodes:
+            return False
+        # Clone donor and overwrite target's attributes
+        donor_node = self.rng.choice(matching_nodes)
+        donor_clone = self.clone(donor_node)
+        target_node.children = donor_clone.children
+        target_node.value = donor_clone.value
+        return True
 
     # Public API
     def mutate(self, root: AstNode, structure_bias: float = 0.5) -> AstNode:
