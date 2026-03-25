@@ -129,6 +129,8 @@ class WorkerProcess:
             response = json.loads(response_line)
             if not isinstance(response, dict):
                 raise ValueError("Worker response is not a JSON object")
+            # Successful request/response round-trip: clear crash streak.
+            self._restarts = 0
             return response
 
         except (
