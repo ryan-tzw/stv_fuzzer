@@ -50,9 +50,13 @@ class StderrPrefixCrashDetector(CrashDetector):
 class ExitCodeOrOutputCrashDetector(CrashDetector):
     """Treat non-zero exits or known bug markers in output as crashes."""
 
-    _BUG_MARKER_RE = re.compile(
-        r"final bug count\s*:|\bbug has been triggered\b|traceback \(most recent call last\)",
+    _GENERIC_BUG_MARKER_RE = re.compile(
+        r"\bbug has been triggered\b|traceback \(most recent call last\)",
         flags=re.IGNORECASE,
+    )
+    _FINAL_BUG_COUNT_NONEMPTY_RE = re.compile(
+        r"final bug count\s*:\s*.*\{[^}]*\([^)]*\)[^}]*\}",
+        flags=re.IGNORECASE | re.DOTALL,
     )
 
     def is_crash(
@@ -65,4 +69,7 @@ class ExitCodeOrOutputCrashDetector(CrashDetector):
             return True
 
         combined = f"{stdout}\n{stderr}"
-        return bool(self._BUG_MARKER_RE.search(combined))
+        if self._GENERIC_BUG_MARKER_RE.search(combined):
+            return True
+
+        return bool(self._FINAL_BUG_COUNT_NONEMPTY_RE.search(combined))
