@@ -16,11 +16,35 @@ def _now() -> str:
 
 
 _WHITESPACE_RE = re.compile(r"\s+")
+_JSON_POS_SUFFIX_RE = re.compile(
+    r":\s*line\s+\d+\s+column\s+\d+\s*\(char\s+\d+\)\s*$",
+    flags=re.IGNORECASE,
+)
+_CONTEXTUAL_NUMBER_RE = re.compile(
+    r"\b(?P<label>line|column|char|offset|position)\s+(?P<num>\d+)\b",
+    flags=re.IGNORECASE,
+)
+_LARGE_NUMBER_RE = re.compile(r"\b\d{3,}\b")
 
 
 def _normalize_exception_message(message: str) -> str:
     """Normalize crash messages for stable deduplication across minor formatting noise."""
+    return _canonicalize_exception_message("", message)
+
+
+def _canonicalize_exception_message(exception_type: str, message: str) -> str:
+    """Canonicalize volatile message fields while preserving semantic error distinctions."""
     text = message or ""
+    lowered_exc = (exception_type or "").split(".")[-1].strip().lower()
+
+    # Normalize context-dependent positions in parser-style messages.
+    text = _CONTEXTUAL_NUMBER_RE.sub(lambda m: f"{m.group('label')} <n>", text)
+    text = _LARGE_NUMBER_RE.sub("<n>", text)
+
+    # JSONDecodeError appends dynamic offset suffixes which should not define uniqueness.
+    if lowered_exc == "jsondecodeerror":
+        text = _JSON_POS_SUFFIX_RE.sub("", text)
+
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip().lower()
 
@@ -95,7 +119,9 @@ class FuzzerDatabase:
         if normalized_exc_type == "addrformaterror":
             return f"{category}|{normalized_exc_type}|{file_path}|{line}"
 
-        normalized_message = _normalize_exception_message(parsed.exception_message)
+        normalized_message = _canonicalize_exception_message(
+            parsed.exception_type, parsed.exception_message
+        )
         return f"{category}|{exc_type}|{file_path}|{line}|{normalized_message}"
 
     # ------------------------------------------------------------------

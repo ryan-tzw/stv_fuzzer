@@ -59,14 +59,18 @@ def main() -> int:
         )
         assert db.record_crash("input-c", c3) is True
 
-        # 3) non-final_bug_count: message formatting variants still dedup.
-        c4 = _make_parsed_crash(message="Expecting   value")
-        c5 = _make_parsed_crash(message="expecting value")
+        # 3) JSONDecodeError: same semantic message with different positions -> dedup.
+        c4 = _make_parsed_crash(
+            message="Expecting ',' delimiter: line 1 column 6 (char 5)"
+        )
+        c5 = _make_parsed_crash(
+            message="Expecting ',' delimiter: line 1 column 3 (char 2)"
+        )
         assert db.record_crash("input-d", c4) is True
         assert db.record_crash("input-e", c5) is False
 
-        # 4) non-final_bug_count: different message -> new unique crash.
-        c6 = _make_parsed_crash(message="Unterminated string")
+        # 4) JSONDecodeError: different semantic message -> new unique crash.
+        c6 = _make_parsed_crash(message="Expecting value: line 1 column 47 (char 46)")
         assert db.record_crash("input-f", c6) is True
 
         # 5) non-final_bug_count: same site/message + different category -> new unique.
@@ -140,20 +144,45 @@ def main() -> int:
         db_path = Path(temp_dir) / "results.db"
         db = FuzzerDatabase(db_path)
 
-        # 6) Same site/category + message formatting variants -> dedup hit.
-        c1 = _make_parsed_crash(message="Expecting   value")
-        c2 = _make_parsed_crash(message="expecting value")
+        # 6) FunctionalBug: same semantic message with formatting variants -> dedup.
+        c1 = _make_parsed_crash(
+            exception_type="buggy_ipyparse.ipv4_stv.FunctionalBug",
+            message="Invalid ipv4 calculation.",
+            file="buggy_ipyparse/ipv4_stv.py",
+            line=134,
+            category="functional",
+            category_source="exception_fallback",
+        )
+        c2 = _make_parsed_crash(
+            exception_type="buggy_ipyparse.ipv4_stv.FunctionalBug",
+            message="  Invalid    ipv4 calculation. ",
+            file="buggy_ipyparse/ipv4_stv.py",
+            line=134,
+            category="functional",
+            category_source="exception_fallback",
+        )
         assert db.record_crash("input-a", c1) is True
         assert db.record_crash("input-b", c2) is False
 
-        # 7) Same site/category + different message -> new unique crash.
-        c3 = _make_parsed_crash(message="Unterminated string")
+        # 7) FunctionalBug: different semantic message -> new unique crash.
+        c3 = _make_parsed_crash(
+            exception_type="buggy_ipyparse.ipv4_stv.FunctionalBug",
+            message="Another functional mismatch",
+            file="buggy_ipyparse/ipv4_stv.py",
+            line=134,
+            category="functional",
+            category_source="exception_fallback",
+        )
         assert db.record_crash("input-c", c3) is True
 
         # 8) Same site/message + different category -> new unique crash.
         c4 = _make_parsed_crash(
-            message="Unterminated string",
+            exception_type="buggy_ipyparse.ipv4_stv.FunctionalBug",
+            message="Another functional mismatch",
+            file="buggy_ipyparse/ipv4_stv.py",
+            line=134,
             category="bonus_untracked",
+            category_source="exception_fallback",
         )
         assert db.record_crash("input-d", c4) is True
 
