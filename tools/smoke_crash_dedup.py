@@ -112,8 +112,28 @@ def main() -> int:
         assert db.record_crash("input-j", c10) is True
         assert db.record_crash("input-k", c11) is False
 
+        # 8) PyInstaller error signatures with varying PYI ids collapse by site.
+        c12 = _make_parsed_crash(
+            exception_type="[PYI-3705164: ERROR] Failed to execute script 'cidrize_runner_stv' due to unhandled exception!",
+            message="[PYI-3705164: ERROR] Failed to execute script 'cidrize_runner_stv' due to unhandled exception!",
+            file="pandas/_libs/parsers.pyx",
+            line=2061,
+            category="unknown",
+            category_source="traceback_fallback",
+        )
+        c13 = _make_parsed_crash(
+            exception_type="[PYI-8400123: ERROR] Failed to execute script 'cidrize_runner_stv' due to unhandled exception!",
+            message="[PYI-8400123: ERROR] Failed to execute script 'cidrize_runner_stv' due to unhandled exception!",
+            file="pandas/_libs/parsers.pyx",
+            line=2061,
+            category="unknown",
+            category_source="traceback_fallback",
+        )
+        assert db.record_crash("input-l", c12) is True
+        assert db.record_crash("input-m", c13) is False
+
         rows = db._conn.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()
-        _assert_equal(int(rows["n"]), 7, "crash row count after dedup scenarios")
+        _assert_equal(int(rows["n"]), 8, "crash row count after dedup scenarios")
         db.close()
 
     with tempfile.TemporaryDirectory() as temp_dir:
