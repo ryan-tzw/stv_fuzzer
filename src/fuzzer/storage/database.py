@@ -16,25 +16,13 @@ def _now() -> str:
 
 
 _WHITESPACE_RE = re.compile(r"\s+")
-_PYI_TOKEN_RE = re.compile(r"\bPYI-\d+\b", flags=re.IGNORECASE)
-_PYI_ERROR_PREFIX_RE = re.compile(
-    r"^\[\s*PYI-\d+\s*:\s*ERROR\s*\]",
-    flags=re.IGNORECASE,
-)
 
 
 def _normalize_exception_message(message: str) -> str:
     """Normalize crash messages for stable deduplication across minor formatting noise."""
-    text = _PYI_TOKEN_RE.sub("pyi-id", message or "")
+    text = message or ""
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip().lower()
-
-
-def _normalize_exception_type(value: str) -> str:
-    raw = (value or "").strip()
-    if _PYI_ERROR_PREFIX_RE.match(raw):
-        return "pyinstaller_error"
-    return raw.split(".")[-1].lower()
 
 
 class FuzzerDatabase:
@@ -99,12 +87,12 @@ class FuzzerDatabase:
     def _build_dedup_key(parsed: ParsedCrash) -> str:
         category = (parsed.bug_category or "").strip().lower()
         exc_type = (parsed.exception_type or "").strip()
-        normalized_exc_type = _normalize_exception_type(exc_type)
+        normalized_exc_type = exc_type.split(".")[-1].lower()
         file_path = (parsed.file or "").strip()
         line = parsed.line
         if parsed.category_source == "final_bug_count":
             return f"{category}|{exc_type}|{file_path}|{line}"
-        if normalized_exc_type in {"addrformaterror", "pyinstaller_error"}:
+        if normalized_exc_type == "addrformaterror":
             return f"{category}|{normalized_exc_type}|{file_path}|{line}"
 
         normalized_message = _normalize_exception_message(parsed.exception_message)

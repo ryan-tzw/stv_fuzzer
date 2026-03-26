@@ -1,6 +1,7 @@
 """Parse structured crash metadata from target stderr/traceback output."""
 
 import re
+from dataclasses import dataclass
 from fuzzer.observers.input import ParsedCrash
 
 
@@ -22,6 +23,9 @@ _TRACEBACK_BLOCK_RE = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 _FILE_LINE_RE = re.compile(r'\s*File "(.+)", line (\d+)')
+_EXCEPTION_LINE_RE = re.compile(
+    r"^\s*(?P<exc>[A-Za-z_][A-Za-z0-9_\.]*)\s*:\s*(?P<msg>.*\S)?\s*$"
+)
 _EXCEPTION_CATEGORY_FALLBACK: dict[str, str] = {
     "jsondecodeerror": "bonus_untracked",
     "cidrizeerror": "bonus_untracked",
@@ -36,6 +40,20 @@ _EXCEPTION_CATEGORY_FALLBACK: dict[str, str] = {
     "boundarybug": "boundary",
     "reliabilitybug": "reliability",
 }
+_WRAPPER_HINTS = (
+    "pyi-",
+    "failed to execute script",
+    "pyinstaller",
+)
+
+
+@dataclass(frozen=True)
+class _ExceptionCandidate:
+    exc_type: str
+    exc_message: str
+    file: str
+    line: int
+    line_index: int
 
 
 def parse_crash(stderr: str) -> ParsedCrash:
@@ -46,19 +64,14 @@ def parse_crash(stderr: str) -> ParsedCrash:
         return explicit
 
     traceback_text = _extract_traceback_text(text)
-
-    lines = traceback_text.splitlines()
-    last_line = lines[-1].strip() if lines else ""
-    if ":" in last_line:
-        exc_type, exc_msg = last_line.split(":", 1)
+    canonical = _extract_canonical_exception(traceback_text)
+    if canonical is None:
+        exc_type, exc_msg, file, line = _extract_fallback_exception(traceback_text)
     else:
-        exc_type, exc_msg = last_line, ""
-
-    file_match = None
-    for line in reversed(lines):
-        file_match = _FILE_LINE_RE.match(line)
-        if file_match:
-            break
+        exc_type = canonical.exc_type
+        exc_msg = canonical.exc_message
+        file = canonical.file
+        line = canonical.line
 
     category = _extract_trigger_line_category(text) or "unknown"
     source = "trigger_line" if category != "unknown" else "traceback_fallback"
@@ -71,8 +84,8 @@ def parse_crash(stderr: str) -> ParsedCrash:
     return ParsedCrash(
         exception_type=exc_type.strip(),
         exception_message=exc_msg.strip(),
-        file=file_match.group(1) if file_match else "unknown",
-        line=int(file_match.group(2)) if file_match else -1,
+        file=file,
+        line=line,
         traceback=traceback_text,
         bug_category=category,
         category_source=source,
@@ -110,6 +123,88 @@ def _extract_traceback_text(text: str) -> str:
 
     # Fallback: keep stderr text when no structured traceback block exists.
     return text.strip()
+
+
+def _extract_canonical_exception(traceback_text: str) -> _ExceptionCandidate | None:
+    candidates = _extract_exception_candidates(traceback_text)
+    if not candidates:
+        return None
+    return max(candidates, key=_candidate_rank)
+
+
+def _extract_exception_candidates(traceback_text: str) -> list[_ExceptionCandidate]:
+    candidates: list[_ExceptionCandidate] = []
+    current_file = "unknown"
+    current_line = -1
+
+    lines = traceback_text.splitlines()
+    for index, raw_line in enumerate(lines):
+        file_match = _FILE_LINE_RE.match(raw_line)
+        if file_match is not None:
+            current_file = file_match.group(1)
+            current_line = int(file_match.group(2))
+            continue
+
+        match = _EXCEPTION_LINE_RE.match(raw_line)
+        if match is None:
+            continue
+        exc_type = match.group("exc").strip()
+        exc_msg = (match.group("msg") or "").strip()
+        candidates.append(
+            _ExceptionCandidate(
+                exc_type=exc_type,
+                exc_message=exc_msg,
+                file=current_file,
+                line=current_line,
+                line_index=index,
+            )
+        )
+
+    return candidates
+
+
+def _candidate_rank(candidate: _ExceptionCandidate) -> tuple[int, int, int, int]:
+    return (
+        int(_is_known_exception(candidate.exc_type)),
+        int(candidate.file != "unknown" and candidate.line != -1),
+        int(not _looks_like_wrapper(candidate.exc_type, candidate.exc_message)),
+        candidate.line_index,
+    )
+
+
+def _extract_fallback_exception(traceback_text: str) -> tuple[str, str, str, int]:
+    lines = traceback_text.splitlines()
+    last_line = lines[-1].strip() if lines else ""
+    if ":" in last_line:
+        exc_type, exc_msg = last_line.split(":", 1)
+    else:
+        exc_type, exc_msg = last_line, ""
+
+    file_match = None
+    for line in reversed(lines):
+        file_match = _FILE_LINE_RE.match(line)
+        if file_match:
+            break
+    if file_match is None:
+        return exc_type, exc_msg, "unknown", -1
+
+    return exc_type, exc_msg, file_match.group(1), int(file_match.group(2))
+
+
+def _is_known_exception(exc_type: str) -> bool:
+    stripped = exc_type.strip()
+    if not stripped:
+        return False
+    simple = stripped.rsplit(".", 1)[-1]
+    if simple.endswith("Bug"):
+        return True
+    key = re.sub(r"[^a-zA-Z0-9]", "", simple).lower()
+    return key in _EXCEPTION_CATEGORY_FALLBACK
+
+
+def _looks_like_wrapper(exc_type: str, exc_message: str) -> bool:
+    lowered = f"{exc_type} {exc_message}".lower()
+    return any(hint in lowered for hint in _WRAPPER_HINTS)
 
 
 def _categorize_from_exception(exc_type: str, traceback_text: str) -> str | None:
