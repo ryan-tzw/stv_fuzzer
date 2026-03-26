@@ -99,6 +99,41 @@ def show_crashes(
             print(f"         traceback:\n{indented}")
         print()
 
+    show_crash_sites(conn, has_category=has_category)
+
+
+def show_crash_sites(conn: sqlite3.Connection, *, has_category: bool) -> None:
+    """Show crash aggregation by site (category + type + file + line)."""
+    group_cols = ["exception_type", "file", "line"]
+    if has_category:
+        group_cols.insert(0, "bug_category")
+
+    group_expr = ", ".join(group_cols)
+    select_cols = group_expr + ", SUM(count) AS total_hits, COUNT(*) AS variants"
+    order_cols = (
+        "total_hits DESC, variants DESC, exception_type ASC, file ASC, line ASC"
+    )
+
+    rows = conn.execute(
+        f"""
+        SELECT {select_cols}
+        FROM crashes
+        GROUP BY {group_expr}
+        ORDER BY {order_cols}
+        """
+    ).fetchall()
+
+    print(f"=== Crash Sites ({len(rows)} grouped) ===")
+    for idx, row in enumerate(rows, start=1):
+        category_prefix = (
+            f"[{row['bug_category']}] " if has_category and row["bug_category"] else ""
+        )
+        print(
+            f"  [{idx:>4}] {category_prefix}{row['exception_type']} @ {row['file']}:{row['line']}"
+        )
+        print(f"         hits={row['total_hits']}  variants={row['variants']}")
+    print()
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="View fuzzer results database")
