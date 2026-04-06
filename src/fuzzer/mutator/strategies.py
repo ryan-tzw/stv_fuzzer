@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from fuzzer.mutator.tree.grammar_mutator import AdaptiveGrammarMutationConfig
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
 from fuzzer.mutator.selectors import SELECTOR_FACTORIES
 from fuzzer.mutator.tree.operations import (
@@ -37,13 +38,20 @@ def build_strategy(name: str, **context: Any) -> MutationStrategy:
 
 def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation]:
     grammar_name = context.get("grammar_name", "ipv4")
+    config = AdaptiveGrammarMutationConfig(
+        min_mutations=2,
+        max_mutations=6,
+        splice_prob=0.50,
+        recursive_prob=0.55,
+        recursion_depth_chance=0.70,
+    )
     return [
         GrammarSubtreeReplace(grammar_name=grammar_name),
-        MultiGrammarSubtreeReplace(grammar_name=grammar_name, max_mutations=4),
+        MultiGrammarSubtreeReplace(grammar_name=grammar_name, config=config),
         TerminalMutate(grammar_name=grammar_name),
         SubtreeDelete(grammar_name=grammar_name),
         SubtreeDuplicate(grammar_name=grammar_name),
         AlternativeSwitch(grammar_name=grammar_name),
-        LargeSubtreeSplice(grammar_name=grammar_name),
-        RecursiveGrammarMutate(grammar_name=grammar_name),
+        LargeSubtreeSplice(grammar_name=grammar_name, config=config),
+        RecursiveGrammarMutate(grammar_name=grammar_name, config=config),
     ]

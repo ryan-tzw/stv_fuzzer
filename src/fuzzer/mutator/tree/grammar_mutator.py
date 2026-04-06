@@ -1,11 +1,59 @@
 """Grammar-aware tree mutation via same-symbol subtree replacement."""
 
 import random
+from dataclasses import dataclass
 
 from fuzzer.grammar.coverage import GrammarCoverage
 from fuzzer.grammar.fragments import FragmentPool
 from fuzzer.grammar.serializer import serialize_tree
 from fuzzer.grammar.tree import Node
+
+
+@dataclass
+class GrammarMutationConfig:
+    """Base config. The adaptive version will modify these values over time."""
+
+    min_mutations: int = 2
+    max_mutations: int = 5
+    splice_prob: float = 0.42
+    recursive_prob: float = 0.48
+    recursion_depth_chance: float = 0.65
+
+
+class AdaptiveGrammarMutationConfig(GrammarMutationConfig):
+    """Dynamic version — automatically adapts probabilities based on fuzzing progress."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._last_adapt_inputs: int = 0
+
+    def adapt(self, total_inputs: int) -> None:
+        """Adapt parameters based on how many inputs we have seen so far.
+        Early phase: very aggressive.
+        Later phase: more focused / less aggressive."""
+        if total_inputs == self._last_adapt_inputs:
+            return
+
+        self._last_adapt_inputs = total_inputs
+
+        if total_inputs < 500:
+            self.min_mutations = 3
+            self.max_mutations = 7
+            self.splice_prob = 0.55
+            self.recursive_prob = 0.65
+            self.recursion_depth_chance = 0.75
+        elif total_inputs < 2000:
+            self.min_mutations = 2
+            self.max_mutations = 5
+            self.splice_prob = 0.45
+            self.recursive_prob = 0.50
+            self.recursion_depth_chance = 0.68
+        else:
+            self.min_mutations = 1
+            self.max_mutations = 3
+            self.splice_prob = 0.30
+            self.recursive_prob = 0.35
+            self.recursion_depth_chance = 0.55
 
 
 def mutate_tree(
@@ -27,30 +75,39 @@ class GrammarMutator:
     """Stateful wrapper for grammar-aware tree mutation."""
 
     def __init__(
-        self, rng: random.Random | None = None, coverage: GrammarCoverage | None = None
+        self,
+        rng: random.Random | None = None,
+        coverage: GrammarCoverage | None = None,
+        config: AdaptiveGrammarMutationConfig | None = None,
     ):
         self._rng = rng or random.Random()
         self.coverage = coverage or GrammarCoverage()
+        self.config = config or AdaptiveGrammarMutationConfig()
 
     def mutate_tree(
         self,
         root: Node,
         pool: FragmentPool,
-        num_mutations: int = 1,
-        allow_splice: bool = False,
-        recursive_prob: float = 0.0,
+        num_mutations: int | None = None,
+        allow_splice: bool = True,
+        recursive_prob: float | None = None,
     ) -> Node | None:
         """Perform 1 or more coverage-guided subtree replacements."""
-        if num_mutations < 1:
-            num_mutations = 1
+        self.config.adapt(self.coverage.total_inputs)
+        if num_mutations is None:
+            num_mutations = self._rng.randint(
+                self.config.min_mutations, self.config.max_mutations
+            )
+        if recursive_prob is None:
+            recursive_prob = self.config.recursive_prob
         current = root
         mutated = False
         for _ in range(num_mutations):
             if self._rng.random() < recursive_prob:
                 new_tree = self._single_replacement(current, pool, allow_splice)
-                if new_tree and self._rng.random() < 0.6:
+                if new_tree and self._rng.random() < self.config.recursion_depth_chance:
                     new_tree = self.mutate_tree(
-                        new_tree, pool, 1, allow_splice, recursive_prob
+                        new_tree, pool, 1, allow_splice, recursive_prob * 0.75
                     )
             else:
                 new_tree = self._single_replacement(current, pool, allow_splice)
@@ -63,7 +120,7 @@ class GrammarMutator:
     def _single_replacement(
         self, root: Node, pool: FragmentPool, allow_splice: bool
     ) -> Node | None:
-        if allow_splice and self._rng.random() < 0.4:
+        if allow_splice and self._rng.random() < self.config.splice_prob:
             return self._large_splice(root, pool)
 
         candidates: list[tuple[float, Node, list[Node]]] = []

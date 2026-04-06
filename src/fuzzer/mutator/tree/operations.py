@@ -13,7 +13,10 @@ from fuzzer.grammar.parser import parse_input
 from fuzzer.grammar.serializer import serialize_tree
 from fuzzer.grammar.tree import Node
 from fuzzer.mutator.base import MutationOperation
-from fuzzer.mutator.tree.grammar_mutator import GrammarMutator
+from fuzzer.mutator.tree.grammar_mutator import (
+    GrammarMutator,
+    AdaptiveGrammarMutationConfig,
+)
 
 
 class GrammarSubtreeReplace(MutationOperation):
@@ -47,13 +50,17 @@ class MultiGrammarSubtreeReplace(MutationOperation):
     """Aggressive multi-point grammar mutation .
     Performs 2-4 subtree replacements in a single mutation for much stronger exploration."""
 
-    def __init__(self, grammar_name: str = "ipv4", max_mutations: int = 4):
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        config: AdaptiveGrammarMutationConfig | None = None,
+    ):
         self.grammar_name = grammar_name
-        self.max_mutations = max_mutations
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
         self._coverage = GrammarCoverage()
-        self._mutator = GrammarMutator(coverage=self._coverage)
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
     def mutate(self, data: str) -> str:
         try:
@@ -64,11 +71,7 @@ class MultiGrammarSubtreeReplace(MutationOperation):
             self._coverage.update_from_tree(parsed.tree)
             self._pool.add_tree(parsed.tree)
 
-            num = self._mutator._rng.randint(2, self.max_mutations)
-
-            mutated = self._mutator.mutate_tree(
-                parsed.tree, self._pool, num_mutations=num
-            )
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
             if mutated is None:
                 return data
 
@@ -269,12 +272,17 @@ class AlternativeSwitch(MutationOperation):
 class LargeSubtreeSplice(MutationOperation):
     """Large-scale cross-input subtree splice. Uses the shared pool."""
 
-    def __init__(self, grammar_name: str = "ipv4"):
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        config: AdaptiveGrammarMutationConfig | None = None,
+    ):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
         self._coverage = GrammarCoverage()
-        self._mutator = GrammarMutator(coverage=self._coverage)
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
     def mutate(self, data: str) -> str:
         try:
@@ -285,9 +293,7 @@ class LargeSubtreeSplice(MutationOperation):
             self._coverage.update_from_tree(parsed.tree)
             self._pool.add_tree(parsed.tree)
 
-            mutated = self._mutator.mutate_tree(
-                parsed.tree, self._pool, num_mutations=1, allow_splice=True
-            )
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
             if mutated is None:
                 return data
 
@@ -302,16 +308,14 @@ class RecursiveGrammarMutate(MutationOperation):
     def __init__(
         self,
         grammar_name: str = "ipv4",
-        max_mutations: int = 3,
-        recursive_prob: float = 0.5,
+        config: AdaptiveGrammarMutationConfig | None = None,
     ):
         self.grammar_name = grammar_name
-        self.max_mutations = max_mutations
-        self.recursive_prob = recursive_prob
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
         self._coverage = GrammarCoverage()
-        self._mutator = GrammarMutator(coverage=self._coverage)
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
     def mutate(self, data: str) -> str:
         try:
@@ -322,14 +326,7 @@ class RecursiveGrammarMutate(MutationOperation):
             self._coverage.update_from_tree(parsed.tree)
             self._pool.add_tree(parsed.tree)
 
-            num = self._mutator._rng.randint(2, self.max_mutations)
-            mutated = self._mutator.mutate_tree(
-                parsed.tree,
-                self._pool,
-                num_mutations=num,
-                allow_splice=True,
-                recursive_prob=self.recursive_prob,
-            )
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
             if mutated is None:
                 return data
 
