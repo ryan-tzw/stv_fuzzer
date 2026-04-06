@@ -1,8 +1,11 @@
 """Fragment extraction and pooling for internal grammar Node trees."""
 
+import random
+
 from dataclasses import dataclass, field
 
 from fuzzer.grammar.tree import Node
+from fuzzer.grammar.coverage import GrammarCoverage
 
 
 def _clone_node(node: Node) -> Node:
@@ -38,6 +41,25 @@ class FragmentPool:
 
     def count(self, symbol: str) -> int:
         return len(self.fragments_by_symbol.get(symbol, []))
+
+    def get_weighted(
+        self, symbol: str, coverage: GrammarCoverage, rng: random.Random
+    ) -> Node | None:
+        """Return a fragment for the symbol, biased toward coverage guidance."""
+        fragments = self.fragments_by_symbol.get(symbol, [])
+        if not fragments:
+            return None
+
+        if len(fragments) == 1:
+            return _clone_node(fragments[0])
+
+        # Weight every fragment by how under-covered its symbol is
+        weights = [coverage.get_symbol_weight(symbol) for _ in fragments]
+        total = sum(weights)
+        weights = [w / total for w in weights]
+
+        chosen = rng.choices(fragments, weights=weights, k=1)[0]
+        return _clone_node(chosen)
 
     def __repr__(self) -> str:
         parts = [f"{symbol}:{self.count(symbol)}" for symbol in self.symbols()]

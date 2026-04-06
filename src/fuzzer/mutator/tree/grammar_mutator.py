@@ -2,26 +2,33 @@
 
 import random
 
+from fuzzer.grammar.coverage import GrammarCoverage
 from fuzzer.grammar.fragments import FragmentPool
 from fuzzer.grammar.serializer import serialize_tree
 from fuzzer.grammar.tree import Node
 
 
 def mutate_tree(
-    root: Node, pool: FragmentPool, rng: random.Random | None = None
+    root: Node,
+    pool: FragmentPool,
+    coverage: GrammarCoverage | None = None,
+    rng: random.Random | None = None,
 ) -> Node | None:
     """Replace one subtree with a same-symbol fragment from the pool."""
-    return GrammarMutator(rng=rng).mutate_tree(root, pool)
+    return GrammarMutator(rng=rng, coverage=coverage).mutate_tree(root, pool)
 
 
 class GrammarMutator:
     """Stateful wrapper for grammar-aware tree mutation."""
 
-    def __init__(self, rng: random.Random | None = None):
+    def __init__(
+        self, rng: random.Random | None = None, coverage: GrammarCoverage | None = None
+    ):
         self._rng = rng or random.Random()
+        self.coverage = coverage or GrammarCoverage()
 
     def mutate_tree(self, root: Node, pool: FragmentPool) -> Node | None:
-        candidates: list[tuple[Node, list[Node]]] = []
+        candidates: list[tuple[float, Node, list[Node]]] = []
         for node in _collect_nodes(root):
             compatible = [
                 fragment
@@ -29,12 +36,22 @@ class GrammarMutator:
                 if not _serialize_equivalent(fragment, node)
             ]
             if compatible:
-                candidates.append((node, compatible))
+                weight = self.coverage.get_symbol_weight(node.symbol)
+                candidates.append((weight, node, compatible))
 
         if not candidates:
             return None
 
-        target, replacements = self._rng.choice(candidates)
+        total_weight = sum(w for w, _, _ in candidates)
+        r = self._rng.uniform(0, total_weight)
+        current = 0.0
+        for weight, target, replacements in candidates:
+            current += weight
+            if current >= r:
+                break
+        else:
+            _, target, replacements = self._rng.choice(candidates)
+
         replacement = self._rng.choice(replacements)
         return _replace_target(root, target, _clone_node(replacement))
 

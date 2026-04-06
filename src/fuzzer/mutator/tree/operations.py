@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from fuzzer.grammar.coverage import GrammarCoverage
 from fuzzer.grammar.fragments import FragmentPool
 from fuzzer.grammar.generator import generate_from_grammar
 from fuzzer.grammar.loader import load_parser
@@ -22,6 +23,7 @@ class GrammarSubtreeReplace(MutationOperation):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
         self._mutator = GrammarMutator()
 
     def mutate(self, data: str) -> str:
@@ -30,6 +32,7 @@ class GrammarSubtreeReplace(MutationOperation):
             if not parsed.success or parsed.tree is None:
                 return data
 
+            self._coverage.update_from_tree(parsed.tree)
             self._pool.add_tree(parsed.tree)
             mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
             if mutated is None:
