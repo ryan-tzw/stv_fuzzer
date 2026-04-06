@@ -266,6 +266,78 @@ class AlternativeSwitch(MutationOperation):
         return None
 
 
+class LargeSubtreeSplice(MutationOperation):
+    """Large-scale cross-input subtree splice. Uses the shared pool."""
+
+    def __init__(self, grammar_name: str = "ipv4"):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._mutator = GrammarMutator(coverage=self._coverage)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
+            mutated = self._mutator.mutate_tree(
+                parsed.tree, self._pool, num_mutations=1, allow_splice=True
+            )
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
+
+
+class RecursiveGrammarMutate(MutationOperation):
+    """Recursive multi-mutation with probability."""
+
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        max_mutations: int = 3,
+        recursive_prob: float = 0.5,
+    ):
+        self.grammar_name = grammar_name
+        self.max_mutations = max_mutations
+        self.recursive_prob = recursive_prob
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._mutator = GrammarMutator(coverage=self._coverage)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
+            num = self._mutator._rng.randint(2, self.max_mutations)
+            mutated = self._mutator.mutate_tree(
+                parsed.tree,
+                self._pool,
+                num_mutations=num,
+                allow_splice=True,
+                recursive_prob=self.recursive_prob,
+            )
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
+
+
 @dataclass(frozen=True)
 class _DeleteCandidate:
     parent_path: tuple[int, ...]

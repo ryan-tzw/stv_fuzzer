@@ -6,8 +6,10 @@ from fuzzer.mutator.base import MutationOperation, MutationStrategy
 from fuzzer.mutator.selectors import SELECTOR_FACTORIES
 from fuzzer.mutator.tree.operations import (
     AlternativeSwitch,
+    LargeSubtreeSplice,
     GrammarSubtreeReplace,
     MultiGrammarSubtreeReplace,
+    RecursiveGrammarMutate,
     SubtreeDelete,
     SubtreeDuplicate,
     TerminalMutate,
@@ -42,4 +44,6 @@ def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation
         SubtreeDelete(grammar_name=grammar_name),
         SubtreeDuplicate(grammar_name=grammar_name),
         AlternativeSwitch(grammar_name=grammar_name),
+        LargeSubtreeSplice(grammar_name=grammar_name),
+        RecursiveGrammarMutate(grammar_name=grammar_name),
     ]
