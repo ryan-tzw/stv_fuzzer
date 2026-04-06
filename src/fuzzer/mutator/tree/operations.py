@@ -43,6 +43,40 @@ class GrammarSubtreeReplace(MutationOperation):
             return data
 
 
+class MultiGrammarSubtreeReplace(MutationOperation):
+    """Aggressive multi-point grammar mutation .
+    Performs 2-4 subtree replacements in a single mutation for much stronger exploration."""
+
+    def __init__(self, grammar_name: str = "ipv4", max_mutations: int = 4):
+        self.grammar_name = grammar_name
+        self.max_mutations = max_mutations
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._mutator = GrammarMutator(coverage=self._coverage)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
+            num = self._mutator._rng.randint(2, self.max_mutations)
+
+            mutated = self._mutator.mutate_tree(
+                parsed.tree, self._pool, num_mutations=num
+            )
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
+
+
 class TerminalMutate(MutationOperation):
     """Mutate one terminal leaf text in a parsed Node tree."""
 

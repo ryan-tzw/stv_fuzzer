@@ -13,9 +13,12 @@ def mutate_tree(
     pool: FragmentPool,
     coverage: GrammarCoverage | None = None,
     rng: random.Random | None = None,
+    num_mutations: int = 1,
 ) -> Node | None:
     """Replace one subtree with a same-symbol fragment from the pool."""
-    return GrammarMutator(rng=rng, coverage=coverage).mutate_tree(root, pool)
+    return GrammarMutator(rng=rng, coverage=coverage).mutate_tree(
+        root, pool, num_mutations
+    )
 
 
 class GrammarMutator:
@@ -27,7 +30,23 @@ class GrammarMutator:
         self._rng = rng or random.Random()
         self.coverage = coverage or GrammarCoverage()
 
-    def mutate_tree(self, root: Node, pool: FragmentPool) -> Node | None:
+    def mutate_tree(
+        self, root: Node, pool: FragmentPool, num_mutations: int = 1
+    ) -> Node | None:
+        """Perform 1 or more coverage-guided subtree replacements."""
+        if num_mutations < 1:
+            num_mutations = 1
+        current = root
+        mutated = False
+        for _ in range(num_mutations):
+            new_tree = self._single_replacement(current, pool)
+            if new_tree is None:
+                break
+            current = new_tree
+            mutated = True
+        return current if mutated else None
+
+    def _single_replacement(self, root: Node, pool: FragmentPool) -> Node | None:
         candidates: list[tuple[float, Node, list[Node]]] = []
         for node in _collect_nodes(root):
             compatible = [
@@ -51,7 +70,6 @@ class GrammarMutator:
                 break
         else:
             _, target, replacements = self._rng.choice(candidates)
-
         replacement = self._rng.choice(replacements)
         return _replace_target(root, target, _clone_node(replacement))
 

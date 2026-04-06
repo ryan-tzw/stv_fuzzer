@@ -7,6 +7,7 @@ from fuzzer.mutator.selectors import SELECTOR_FACTORIES
 from fuzzer.mutator.tree.operations import (
     AlternativeSwitch,
     GrammarSubtreeReplace,
+    MultiGrammarSubtreeReplace,
     SubtreeDelete,
     SubtreeDuplicate,
     TerminalMutate,
@@ -36,6 +37,7 @@ def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation
     grammar_name = context.get("grammar_name", "ipv4")
     return [
         GrammarSubtreeReplace(grammar_name=grammar_name),
+        MultiGrammarSubtreeReplace(grammar_name=grammar_name, max_mutations=4),
         TerminalMutate(grammar_name=grammar_name),
         SubtreeDelete(grammar_name=grammar_name),
         SubtreeDuplicate(grammar_name=grammar_name),
