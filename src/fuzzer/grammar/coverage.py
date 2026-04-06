@@ -9,6 +9,8 @@ from fuzzer.grammar.tree import Node
 class GrammarCoverage:
     """Tracks how often each grammar symbol has been exercised."""
 
+    total_inputs: int = 0
+
     def __init__(self):
         self.symbol_counts: Dict[str, int] = defaultdict(int)
         self.total_inputs: int = 0
@@ -16,7 +18,7 @@ class GrammarCoverage:
     def update_from_tree(self, tree: Node) -> None:
         """Update coverage from a successfully parsed tree."""
         self._walk_and_count(tree)
-        self.total_inputs += 1
+        GrammarCoverage.total_inputs += 1
 
     def _walk_and_count(self, node: Node) -> None:
         """Recursively count every symbol in the tree."""
@@ -30,8 +32,13 @@ class GrammarCoverage:
         count = self.symbol_counts[symbol]
         return 1.0 / (count + 1.0)  # never-seen symbols get weight ~1.0
 
+    @classmethod
+    def get_global_total_inputs(cls) -> int:
+        """Return the global number of valid inputs processed by the entire fuzzer."""
+        return cls.total_inputs
+
     def __repr__(self) -> str:
         if not self.symbol_counts:
             return "GrammarCoverage(<empty>)"
         top = sorted(self.symbol_counts.items(), key=lambda x: x[1])[:8]
-        return f"GrammarCoverage({self.total_inputs} inputs, top-under-covered: {top})"
+        return f"GrammarCoverage({GrammarCoverage.total_inputs} global inputs, top-under-covered: {top})"

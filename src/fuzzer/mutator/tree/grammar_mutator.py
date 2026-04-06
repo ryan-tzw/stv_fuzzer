@@ -27,22 +27,23 @@ class AdaptiveGrammarMutationConfig(GrammarMutationConfig):
         super().__init__(**kwargs)
         self._last_adapt_inputs: int = 0
 
-    def adapt(self, total_inputs: int) -> None:
+    def adapt(self) -> None:
         """Adapt parameters based on how many inputs we have seen so far.
         Early phase: very aggressive.
         Later phase: more focused / less aggressive."""
-        if total_inputs == self._last_adapt_inputs:
+        current = GrammarCoverage.get_global_total_inputs()
+        if current == self._last_adapt_inputs:
             return
 
-        self._last_adapt_inputs = total_inputs
+        self._last_adapt_inputs = current
 
-        if total_inputs < 500:
+        if current < 500:
             self.min_mutations = 3
             self.max_mutations = 7
             self.splice_prob = 0.55
             self.recursive_prob = 0.65
             self.recursion_depth_chance = 0.75
-        elif total_inputs < 2000:
+        elif current < 2000:
             self.min_mutations = 2
             self.max_mutations = 5
             self.splice_prob = 0.45
@@ -93,7 +94,7 @@ class GrammarMutator:
         recursive_prob: float | None = None,
     ) -> Node | None:
         """Perform 1 or more coverage-guided subtree replacements."""
-        self.config.adapt(self.coverage.total_inputs)
+        self.config.adapt()
         if num_mutations is None:
             num_mutations = self._rng.randint(
                 self.config.min_mutations, self.config.max_mutations
