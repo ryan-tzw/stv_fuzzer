@@ -85,7 +85,7 @@ class FuzzingEngine:
         cycle: int,
         unique_crashes: int,
     ) -> tuple[int, int]:
-        mutated = self.mutator.mutate(seed.data)
+        mutated, used_ops = self.mutator.mutate(seed.data)
         run_result = self.executor.run(mutated)
         self.corpus.record_fuzzed(seed)
 
@@ -105,6 +105,7 @@ class FuzzingEngine:
         )
 
         execution_id = executions + 1
+        reward = 0.0
         if is_crash:
             parsed_crash = getattr(signal, "parsed_crash", None)
             if parsed_crash is None:
@@ -116,12 +117,17 @@ class FuzzingEngine:
                 if is_new:
                     unique_crashes += 1
                     self.logger.log_crash(execution_id, cycle, unique_crashes)
+                    reward += 2.0
                 else:
                     self.logger.log_duplicate_crash(execution_id, cycle)
 
         if add_to_corpus:
             self.corpus.add(mutated)
             self.logger.log_corpus_add(execution_id, cycle)
+            reward += 1.0
+
+        if used_ops:
+            self.mutator.update_weights(used_ops, reward)
 
         executions = execution_id
         self.logger.tick(executions=executions, cycles=cycle)
