@@ -11,9 +11,9 @@ class CoverageFeedback:
     Stateful feedback handler for coverage-guided fuzzing.
 
     Responsibilities:
-    - Track which lines/branches have been seen globally.
-        - Given a CoverageData signal, decide whether the input is interesting
-            (new coverage).
+    - Track which lines/arcs have been seen globally.
+    - Given a CoverageData signal, decide whether the input is interesting.
+      Interestingness is arc-based: only new arcs add inputs to corpus.
     """
 
     def __init__(self) -> None:
@@ -28,19 +28,15 @@ class CoverageFeedback:
             signal:  Normalised coverage data produced by the observer.
 
         Returns:
-            True if this execution contributes new coverage, False otherwise.
+            True if this execution contributes at least one new arc, False otherwise.
         """
-        is_new_coverage = self._has_new_coverage(signal)
-        if is_new_coverage:
+        is_new_arc = self._has_new_arc(signal)
+        if is_new_arc:
             self._update_seen(signal)
-        return is_new_coverage
+        return is_new_arc
 
-    def _has_new_coverage(self, signal: CoverageData) -> bool:
-        """Return True if signal contains any lines or branches not seen before."""
-        for file, lines in signal.lines.items():
-            for line in lines:
-                if (file, line) not in self._seen_lines:
-                    return True
+    def _has_new_arc(self, signal: CoverageData) -> bool:
+        """Return True if signal contains any arcs not seen before."""
         for file, branches in signal.branches.items():
             for branch in branches:
                 if (file, branch) not in self._seen_branches:
