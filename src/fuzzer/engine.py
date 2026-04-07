@@ -77,6 +77,17 @@ class FuzzingEngine:
                 return f"reached time limit ({time_limit}s)"
         return None
 
+    def _coverage_counts(self) -> tuple[int, int, int]:
+        """Return cumulative unique line/branch/arc counts from active feedback."""
+        line_coverage = getattr(self.feedback, "total_seen_lines", 0)
+        branch_coverage = getattr(self.feedback, "total_seen_branches", 0)
+        arc_coverage = getattr(self.feedback, "total_seen_arcs", 0)
+        return (
+            line_coverage if isinstance(line_coverage, int) else 0,
+            branch_coverage if isinstance(branch_coverage, int) else 0,
+            arc_coverage if isinstance(arc_coverage, int) else 0,
+        )
+
     def _execute_once(
         self,
         *,
@@ -84,7 +95,7 @@ class FuzzingEngine:
         executions: int,
         cycle: int,
         unique_crashes: int,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int, int, int]:
         mutated = self.mutator.mutate(seed.data)
         run_result = self.executor.run(mutated)
         self.corpus.record_fuzzed(seed)
@@ -124,8 +135,15 @@ class FuzzingEngine:
             self.logger.log_corpus_add(execution_id, cycle)
 
         executions = execution_id
-        self.logger.tick(executions=executions, cycles=cycle)
-        return executions, unique_crashes
+        line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
+        self.logger.tick(
+            executions=executions,
+            cycles=cycle,
+            line_coverage=line_coverage,
+            branch_coverage=branch_coverage,
+            arc_coverage=arc_coverage,
+        )
+        return executions, unique_crashes, line_coverage, branch_coverage, arc_coverage
 
     def run(self) -> None:
         self.corpus.load()
@@ -133,11 +151,17 @@ class FuzzingEngine:
         executions = 0
         cycles = 0
         unique_crashes = 0
+        line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
         start_time = time.monotonic()
 
         with self.logger:
             self.logger.start(
-                corpus_size=self.corpus.size(), executions=executions, cycles=cycles
+                corpus_size=self.corpus.size(),
+                executions=executions,
+                cycles=cycles,
+                line_coverage=line_coverage,
+                branch_coverage=branch_coverage,
+                arc_coverage=arc_coverage,
             )
 
             try:
@@ -166,7 +190,13 @@ class FuzzingEngine:
                                 self.logger.log_stop_reason(stop_reason)
                                 break
 
-                            executions, unique_crashes = self._execute_once(
+                            (
+                                executions,
+                                unique_crashes,
+                                line_coverage,
+                                branch_coverage,
+                                arc_coverage,
+                            ) = self._execute_once(
                                 seed=seed,
                                 executions=executions,
                                 cycle=active_cycle,
@@ -182,7 +212,13 @@ class FuzzingEngine:
                         break
 
                     cycles = active_cycle
-                    self.logger.tick(executions=executions, cycles=cycles)
+                    self.logger.tick(
+                        executions=executions,
+                        cycles=cycles,
+                        line_coverage=line_coverage,
+                        branch_coverage=branch_coverage,
+                        arc_coverage=arc_coverage,
+                    )
 
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")

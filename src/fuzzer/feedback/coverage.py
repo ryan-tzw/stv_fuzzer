@@ -51,3 +51,18 @@ class CoverageFeedback:
         for file, branches in signal.branches.items():
             for branch in branches:
                 self._seen_branches.add((file, branch))
+
+    @property
+    def total_seen_lines(self) -> int:
+        """Return total unique covered lines observed globally."""
+        return len(self._seen_lines)
+
+    @property
+    def total_seen_branches(self) -> int:
+        """Return total unique covered branches observed globally."""
+        return len(self._seen_branches)
+
+    @property
+    def total_seen_arcs(self) -> int:
+        """Return total unique covered arcs observed globally."""
+        return len(self._seen_branches)

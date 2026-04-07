@@ -36,6 +36,9 @@ class FuzzerState:
     cycle: int = 0
     corpus_size: int = 0
     unique_crashes: int = 0
+    line_coverage: int = 0
+    branch_coverage: int = 0
+    arc_coverage: int = 0
     start_time: float | None = None
     events: list[Text] = field(default_factory=list)
 
@@ -93,6 +96,9 @@ class FuzzerDisplay:
         grid.add_row("Executions:", str(self._state.execution))
         grid.add_row("Corpus size:", str(self._state.corpus_size))
         grid.add_row("Unique crashes:", str(self._state.unique_crashes))
+        grid.add_row("Line coverage:", str(self._state.line_coverage))
+        grid.add_row("Branch coverage:", str(self._state.branch_coverage))
+        grid.add_row("Arc coverage:", str(self._state.arc_coverage))
         grid.add_row("Elapsed:", self._state.elapsed_str())
         grid.add_row("Exec/s:", f"{self._state.execs_per_s():.1f}")
         return Panel(grid, title="[bold green]Stats[/bold green]", border_style="green")
@@ -156,18 +162,39 @@ class FuzzerLogger:
     # Public API
     # ------------------------------------------------------------------
 
-    def start(self, corpus_size: int, executions: int = 0, cycles: int = 0) -> None:
+    def start(
+        self,
+        corpus_size: int,
+        executions: int = 0,
+        cycles: int = 0,
+        line_coverage: int = 0,
+        branch_coverage: int = 0,
+        arc_coverage: int = 0,
+    ) -> None:
         """Call once before entering the fuzzing loop."""
         self._state.start_time = time.monotonic()
         self._state.corpus_size = corpus_size
         self._state.execution = executions
         self._state.cycle = cycles
+        self._state.line_coverage = line_coverage
+        self._state.branch_coverage = branch_coverage
+        self._state.arc_coverage = arc_coverage
         self._write_status(running=True)
 
-    def tick(self, executions: int, cycles: int) -> None:
+    def tick(
+        self,
+        executions: int,
+        cycles: int,
+        line_coverage: int = 0,
+        branch_coverage: int = 0,
+        arc_coverage: int = 0,
+    ) -> None:
         """Call after each execution and cycle transition to keep counters current."""
         self._state.execution = executions
         self._state.cycle = cycles
+        self._state.line_coverage = line_coverage
+        self._state.branch_coverage = branch_coverage
+        self._state.arc_coverage = arc_coverage
         self._write_status(running=True)
 
     def log_corpus_add(self, execution: int, cycle: int) -> None:
@@ -215,6 +242,9 @@ class FuzzerLogger:
         summary.add_row("Executions:", str(executions))
         summary.add_row("Corpus size:", str(self._state.corpus_size))
         summary.add_row("Unique crashes:", str(self._state.unique_crashes))
+        summary.add_row("Line coverage:", str(self._state.line_coverage))
+        summary.add_row("Branch coverage:", str(self._state.branch_coverage))
+        summary.add_row("Arc coverage:", str(self._state.arc_coverage))
         summary.add_row("Elapsed:", elapsed_str)
         summary.add_row("Results:", str(self._run_dir / "results.db"))
         self._console.print(summary)
@@ -239,6 +269,9 @@ class FuzzerLogger:
             "execution": self._state.execution,
             "corpus_size": self._state.corpus_size,
             "unique_crashes": self._state.unique_crashes,
+            "line_coverage": self._state.line_coverage,
+            "branch_coverage": self._state.branch_coverage,
+            "arc_coverage": self._state.arc_coverage,
             "execs_per_s": round(self._state.execs_per_s(), 2),
             "elapsed_s": int(
                 time.monotonic() - (self._state.start_time or time.monotonic())
