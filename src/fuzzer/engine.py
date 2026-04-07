@@ -3,7 +3,7 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
@@ -11,6 +11,12 @@ from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
+from fuzzer.metrics import MetricsSnapshot
+from fuzzer.metrics.graphs import (
+    create_coverage_graph,
+    create_unique_graph,
+    create_interesting_graph,
+)
 
 
 class FuzzingEngine:
@@ -84,6 +90,8 @@ class FuzzingEngine:
         executions: int,
         cycle: int,
         unique_crashes: int,
+        crashes: int,
+        interesting_seed: int,
     ) -> tuple[int, int]:
         mutated = self.mutator.mutate(seed.data)
         run_result = self.executor.run(mutated)
@@ -106,6 +114,7 @@ class FuzzingEngine:
 
         execution_id = executions + 1
         if is_crash:
+            crashes += 1
             parsed_crash = getattr(signal, "parsed_crash", None)
             if parsed_crash is None:
                 self.logger.log_stop_reason(
@@ -120,12 +129,15 @@ class FuzzingEngine:
                     self.logger.log_duplicate_crash(execution_id, cycle)
 
         if add_to_corpus:
-            self.corpus.add(mutated)
-            self.logger.log_corpus_add(execution_id, cycle)
+            _, added = self.corpus.add(mutated)
+
+            if added:
+                interesting_seed += 1
+                self.logger.log_corpus_add(execution_id, cycle)
 
         executions = execution_id
         self.logger.tick(executions=executions, cycles=cycle)
-        return executions, unique_crashes
+        return executions, unique_crashes, crashes, interesting_seed
 
     def run(self) -> None:
         self.corpus.load()
@@ -133,7 +145,27 @@ class FuzzingEngine:
         executions = 0
         cycles = 0
         unique_crashes = 0
+        crashes = 0
+        interesting_seed = 0
         start_time = time.monotonic()
+
+        last_metrics_time = start_time
+        last_execs = 0
+        last_exec_time = start_time
+        execs_per_sec = 0.0
+
+        initial_metrics = MetricsSnapshot(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            corpus_size=self.corpus.size(),
+            interesting_seed=0,
+            unique_crashes=unique_crashes,
+            total_crashes=0,
+            total_edges=self.feedback.total_edges(),
+            executions=executions,
+            execs_per_sec=0.0,
+        )
+
+        self.db.record_metrics(initial_metrics)
 
         with self.logger:
             self.logger.start(
@@ -166,12 +198,42 @@ class FuzzingEngine:
                                 self.logger.log_stop_reason(stop_reason)
                                 break
 
-                            executions, unique_crashes = self._execute_once(
-                                seed=seed,
-                                executions=executions,
-                                cycle=active_cycle,
-                                unique_crashes=unique_crashes,
+                            executions, unique_crashes, crashes, interesting_seed = (
+                                self._execute_once(
+                                    seed=seed,
+                                    executions=executions,
+                                    cycle=active_cycle,
+                                    unique_crashes=unique_crashes,
+                                    crashes=crashes,
+                                    interesting_seed=interesting_seed,
+                                )
                             )
+
+                            now = time.monotonic()
+                            if now - last_metrics_time >= 2.0:
+                                delta_execs = executions - last_execs
+                                delta_time = now - last_exec_time
+
+                                execs_per_sec = (
+                                    delta_execs / delta_time if delta_time > 0 else 0
+                                )
+
+                                last_execs = executions
+                                last_exec_time = now
+
+                                current_metrics = MetricsSnapshot(
+                                    timestamp=datetime.now(timezone.utc).isoformat(),
+                                    corpus_size=self.corpus.size(),
+                                    interesting_seed=interesting_seed,
+                                    unique_crashes=unique_crashes,
+                                    total_crashes=crashes,
+                                    total_edges=self.feedback.total_edges(),
+                                    executions=executions,
+                                    execs_per_sec=execs_per_sec,
+                                )
+
+                                self.db.record_metrics(current_metrics)
+                                last_metrics_time = now
 
                         if stop_reason is not None:
                             break
@@ -184,10 +246,19 @@ class FuzzingEngine:
                     cycles = active_cycle
                     self.logger.tick(executions=executions, cycles=cycles)
 
+                coverage_data = self.db.get_coverage_data()
+                unique_data = self.db.get_unique_bugs_data()
+                interesting_data = self.db.get_interesting_data()
+
+                create_coverage_graph(coverage_data, self.run_dir)
+                create_unique_graph(unique_data, self.run_dir)
+                create_interesting_graph(interesting_data, self.run_dir)
+
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")
 
             finally:
+                print(self.db.display_metrics())
                 self.stop()
 
         elapsed = time.monotonic() - start_time

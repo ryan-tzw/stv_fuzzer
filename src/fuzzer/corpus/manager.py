@@ -82,17 +82,17 @@ class CorpusManager:
             return []
         return generated
 
-    def _add_seed(self, data: str, *, persist: bool) -> SeedInput:
+    def _add_seed(self, data: str, *, persist: bool) -> tuple[SeedInput, bool]:
         existing = self._seed_index.get(data)
         if existing is not None:
-            return existing
+            return existing, False
 
         seed = SeedInput(data=data)
         if persist:
             self._db.save_seed(seed)
         self._seeds.append(seed)
         self._seed_index[data] = seed
-        return seed
+        return seed, True
 
     def _rebuild_index(self) -> None:
         self._seed_index = {seed.data: seed for seed in self._seeds}
@@ -157,7 +157,7 @@ class CorpusManager:
         """Return a seed by index from the live in-memory corpus."""
         return self._seeds[index]
 
-    def add(self, data: str) -> SeedInput:
+    def add(self, data: str) -> tuple[SeedInput, bool]:
         """
         Add an interesting input to the in-memory pool and persist it to the database.
         Returns the newly created SeedInput.

@@ -20,6 +20,9 @@ class CoverageFeedback:
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_branches: set[tuple[str, tuple[int, int]]] = set()
 
+    def total_edges(self) -> int:
+        return len(self._seen_branches)
+
     def evaluate(self, signal: CoverageData) -> bool:
         """
         Evaluate coverage and return whether this input should enter the corpus.
