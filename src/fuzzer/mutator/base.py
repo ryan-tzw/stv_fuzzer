@@ -11,6 +11,8 @@ class BaseMutator(ABC):
 
 
 class MutationOperation(ABC):
+    kind: str = "unknown"
+
     @abstractmethod
     def mutate(self, data: str) -> str:
         """Apply one mutation operation to input text."""

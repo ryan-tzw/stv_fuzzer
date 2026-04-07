@@ -5,6 +5,12 @@ from typing import Any
 from fuzzer.mutator.tree.grammar_mutator import AdaptiveGrammarMutationConfig
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
 from fuzzer.mutator.selectors import SELECTOR_FACTORIES
+from fuzzer.mutator.string.operations import (
+    DeleteChar,
+    DuplicateChar,
+    InsertRandomChar,
+    RandomiseChar,
+)
 from fuzzer.mutator.tree.operations import (
     AlternativeSwitch,
     LargeSubtreeSplice,
@@ -54,4 +60,8 @@ def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation
         AlternativeSwitch(grammar_name=grammar_name),
         LargeSubtreeSplice(grammar_name=grammar_name, config=config),
         RecursiveGrammarMutate(grammar_name=grammar_name, config=config),
+        RandomiseChar(),
+        DeleteChar(),
+        InsertRandomChar(),
+        DuplicateChar(),
     ]

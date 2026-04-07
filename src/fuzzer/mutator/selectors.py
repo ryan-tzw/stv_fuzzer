@@ -33,7 +33,33 @@ class RoundRobinStrategy(MutationStrategy):
         return [operation]
 
 
+class HybridStrategy(MutationStrategy):
+    """
+    Hybrid strategy.
+    - Phase 1: ALWAYS apply one tree mutation first .
+    - Phase 2: With 30% probability, ALSO apply one string mutation on top.
+    """
+
+    def __init__(self, operations: list[MutationOperation]):
+        if not operations:
+            raise ValueError("HybridStrategy requires at least one operation")
+
+        self.tree_operations = [op for op in operations if op.kind == "tree"]
+        self.string_operations = [op for op in operations if op.kind == "string"]
+        self.string_probability = 0.3
+
+    def select(self) -> list[MutationOperation]:
+        tree_op = random.choice(self.tree_operations)
+        ops_to_apply = [tree_op]
+        if random.random() < self.string_probability:
+            string_op = random.choice(self.string_operations)
+            ops_to_apply.append(string_op)
+
+        return ops_to_apply
+
+
 SELECTOR_FACTORIES: dict[str, Callable[..., MutationStrategy]] = {
     "random_single": RandomSingleStrategy,
     "round_robin": RoundRobinStrategy,
+    "hybrid": HybridStrategy,
 }

@@ -22,6 +22,8 @@ from fuzzer.mutator.tree.grammar_mutator import (
 class GrammarSubtreeReplace(MutationOperation):
     """Mutate text by parsing to a Node tree and replacing one subtree."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4"):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -49,6 +51,8 @@ class GrammarSubtreeReplace(MutationOperation):
 class MultiGrammarSubtreeReplace(MutationOperation):
     """Aggressive multi-point grammar mutation .
     Performs 2-4 subtree replacements in a single mutation for much stronger exploration."""
+
+    kind = "tree"
 
     def __init__(
         self,
@@ -83,6 +87,8 @@ class MultiGrammarSubtreeReplace(MutationOperation):
 class TerminalMutate(MutationOperation):
     """Mutate one terminal leaf text in a parsed Node tree."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -114,6 +120,8 @@ class TerminalMutate(MutationOperation):
 class SubtreeDelete(MutationOperation):
     """Delete one compatible subtree from a repeated structure."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -140,6 +148,8 @@ class SubtreeDelete(MutationOperation):
 class SubtreeDuplicate(MutationOperation):
     """Duplicate one compatible subtree from a repeated structure."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -165,6 +175,8 @@ class SubtreeDuplicate(MutationOperation):
 
 class AlternativeSwitch(MutationOperation):
     """Switch a nonterminal subtree to a different grammar alternative."""
+
+    kind = "tree"
 
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
@@ -272,6 +284,8 @@ class AlternativeSwitch(MutationOperation):
 class LargeSubtreeSplice(MutationOperation):
     """Large-scale cross-input subtree splice. Uses the shared pool."""
 
+    kind = "tree"
+
     def __init__(
         self,
         grammar_name: str = "ipv4",
@@ -304,6 +318,8 @@ class LargeSubtreeSplice(MutationOperation):
 
 class RecursiveGrammarMutate(MutationOperation):
     """Recursive multi-mutation with probability."""
+
+    kind = "tree"
 
     def __init__(
         self,

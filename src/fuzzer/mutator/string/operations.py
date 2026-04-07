@@ -11,6 +11,8 @@ from fuzzer.mutator.base import MutationOperation
 class RandomiseChar(MutationOperation):
     """Replace a random character with a random printable ASCII character."""
 
+    kind = "string"
+
     def mutate(self, data: str) -> str:
         if not data:
             return data
@@ -22,6 +24,8 @@ class RandomiseChar(MutationOperation):
 class DeleteChar(MutationOperation):
     """Delete a random character from the input."""
 
+    kind = "string"
+
     def mutate(self, data: str) -> str:
         if not data:
             return data
@@ -32,6 +36,8 @@ class DeleteChar(MutationOperation):
 class InsertRandomChar(MutationOperation):
     """Insert a random printable ASCII character at a random position."""
 
+    kind = "string"
+
     def mutate(self, data: str) -> str:
         idx = random.randint(0, len(data))
         new_char = random.choice(string.printable)
@@ -40,6 +46,8 @@ class InsertRandomChar(MutationOperation):
 
 class DuplicateChar(MutationOperation):
     """Duplicate a random character in the input."""
+
+    kind = "string"
 
     def mutate(self, data: str) -> str:
         if not data:
