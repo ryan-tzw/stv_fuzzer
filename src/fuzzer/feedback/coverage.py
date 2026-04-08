@@ -104,6 +104,18 @@ class CoverageFeedback:
         self, candidate_arcs: set[ArcKey], fallback_score: float
     ) -> bool:
         docs = self._corpus_docs
+        if not self._passes_fallback_prerequisites(candidate_arcs, docs):
+            return False
+
+        if self._rare_hits(candidate_arcs, docs) < self._policy.min_rare_hits:
+            return False
+
+        threshold = self._fallback_score_threshold()
+        return fallback_score >= threshold
+
+    def _passes_fallback_prerequisites(
+        self, candidate_arcs: set[ArcKey], docs: int
+    ) -> bool:
         if docs < self._policy.warmup_docs:
             return False
         if len(candidate_arcs) < self._policy.min_candidate_arcs:
@@ -113,18 +125,19 @@ class CoverageFeedback:
             >= self._policy.max_fallback_accepts_per_cycle
         ):
             return False
+        return True
 
-        rare_cutoff = max(2, int(math.floor(self._policy.rare_fraction * docs)))
-        rare_hits = sum(
+    def _rare_cutoff(self, docs: int) -> int:
+        return max(2, int(math.floor(self._policy.rare_fraction * docs)))
+
+    def _rare_hits(self, candidate_arcs: set[ArcKey], docs: int) -> int:
+        rare_cutoff = self._rare_cutoff(docs)
+        return sum(
             1 for arc in candidate_arcs if self._arc_doc_freq.get(arc, 0) <= rare_cutoff
         )
-        if rare_hits < self._policy.min_rare_hits:
-            return False
 
-        threshold = self._percentile(
-            self._fallback_scores, self._policy.fallback_percentile
-        )
-        return fallback_score >= threshold
+    def _fallback_score_threshold(self) -> float:
+        return self._percentile(self._fallback_scores, self._policy.fallback_percentile)
 
     @staticmethod
     def _percentile(values: deque[float], percentile: float) -> float:
