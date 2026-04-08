@@ -36,6 +36,7 @@ class CoverageFeedback:
 
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_arcs: set[ArcKey] = set()
+        self._seen_branches: set[ArcKey] = set()
 
         self._arc_doc_freq: dict[ArcKey, int] = {}
         self._corpus_docs = 0
@@ -176,9 +177,15 @@ class CoverageFeedback:
         for file, lines in signal.lines.items():
             for line in lines:
                 self._seen_lines.add((file, line))
+
+        decision_lines_by_file = signal.branch_decision_lines
         for file, branches in signal.branches.items():
+            decision_lines = decision_lines_by_file.get(file, frozenset())
             for branch in branches:
-                self._seen_arcs.add((file, branch))
+                arc = (file, branch)
+                self._seen_arcs.add(arc)
+                if branch[0] in decision_lines:
+                    self._seen_branches.add(arc)
 
     def _record_accepted_candidate(self, candidate_arcs: set[ArcKey]) -> None:
         """Record one accepted input's arc presence into corpus-level frequencies."""
@@ -194,7 +201,7 @@ class CoverageFeedback:
     @property
     def total_seen_branches(self) -> int:
         """Return total unique covered branches observed globally."""
-        return len(self._seen_arcs)
+        return len(self._seen_branches)
 
     @property
     def total_seen_arcs(self) -> int:

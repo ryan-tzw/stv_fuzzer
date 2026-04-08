@@ -11,14 +11,21 @@ import json
 import runpy
 import sys
 import traceback
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import coverage as _coverage_module
+
+
+class _BranchStatEntry(TypedDict):
+    line: int
+    exits: int
+    taken: int
 
 
 class _CoverageEntry(TypedDict):
     lines: list[int]
     arcs: list[list[int]]
+    branch_stats: NotRequired[list[_BranchStatEntry]]
 
 
 _CoveragePayload = dict[str, _CoverageEntry]
@@ -83,9 +90,14 @@ def _run_once(harness_path: str, harness_argv: list, input_str: str | None) -> d
     for file_path in cov_data.measured_files():
         lines = cov_data.lines(file_path)
         arcs = cov_data.arcs(file_path)
+        branch_stats = cov.branch_stats(file_path)
         coverage_dict[file_path] = {
             "lines": list(lines) if lines else [],
             "arcs": [list(a) for a in arcs] if arcs else [],
+            "branch_stats": [
+                {"line": line, "exits": exits, "taken": taken}
+                for line, (exits, taken) in sorted(branch_stats.items())
+            ],
         }
 
     return {

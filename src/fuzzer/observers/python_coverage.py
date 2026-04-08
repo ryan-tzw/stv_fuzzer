@@ -20,7 +20,11 @@ from fuzzer.observers.input import ObservationInput, ParsedCrash
 @dataclass
 class CoverageData:
     lines: dict[str, frozenset[int]] = field(default_factory=dict)
+    # NOTE: branches stores arcs for compatibility with existing feedback logic.
     branches: dict[str, frozenset[tuple[int, int]]] = field(default_factory=dict)
+    # Decision-point source lines (from coverage.py branch_stats) used to
+    # derive true branch-exit counts from arc observations.
+    branch_decision_lines: dict[str, frozenset[int]] = field(default_factory=dict)
     parsed_crash: ParsedCrash | None = None
 
     def total_lines(self) -> int:
@@ -67,9 +71,11 @@ class PythonCoverageObserver(_ProjectScopedCoverageObserver):
 
             lines = data.lines(file_path)
             arcs = data.arcs(file_path)
+            branch_stats = cov.branch_stats(file_path)
 
             result.lines[key] = frozenset(lines) if lines else frozenset()
             result.branches[key] = frozenset(arcs) if arcs else frozenset()
+            result.branch_decision_lines[key] = frozenset(branch_stats.keys())
 
         if cleanup:
             coverage_file.unlink(missing_ok=True)
@@ -92,7 +98,11 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
         {
             "<abs_file_path>": {
                 "lines": [int, ...],
-                "arcs":  [[int, int], ...]
+                "arcs":  [[int, int], ...],
+                "branch_stats": [
+                    {"line": int, "exits": int, "taken": int},
+                    ...
+                ]  # optional
             },
             ...
         }
@@ -124,10 +134,16 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
 
             lines = file_data.get("lines") or []
             arcs = file_data.get("arcs") or []
+            branch_stats = file_data.get("branch_stats") or []
 
             result.lines[key] = frozenset(lines)
             result.branches[key] = frozenset(
                 (arc[0], arc[1]) for arc in arcs if len(arc) == 2
+            )
+            result.branch_decision_lines[key] = frozenset(
+                int(entry["line"])
+                for entry in branch_stats
+                if isinstance(entry, dict) and "line" in entry
             )
 
         return result
