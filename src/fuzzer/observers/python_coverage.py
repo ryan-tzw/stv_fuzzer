@@ -20,7 +20,11 @@ from fuzzer.observers.input import ObservationInput, ParsedCrash
 @dataclass
 class CoverageData:
     lines: dict[str, frozenset[int]] = field(default_factory=dict)
+    # NOTE: branches stores arcs for compatibility with existing feedback logic.
     branches: dict[str, frozenset[tuple[int, int]]] = field(default_factory=dict)
+    # Decision-point source lines (from coverage.py branch_stats) used to
+    # derive true branch-exit counts from arc observations.
+    branch_decision_lines: dict[str, frozenset[int]] = field(default_factory=dict)
     parsed_crash: ParsedCrash | None = None
 
     def total_lines(self) -> int:
@@ -33,6 +37,8 @@ class CoverageData:
 class _ProjectScopedCoverageObserver:
     def __init__(self, project_dir: str | Path):
         self.project_dir = Path(project_dir).resolve()
+        self._branch_decision_lines_cache: dict[str, frozenset[int]] = {}
+        self._scoped_branch_decision_lines_cache: dict[str, frozenset[int]] = {}
 
     def _scoped_key(self, file_path: str | Path) -> str | None:
         resolved = Path(file_path).resolve()
@@ -40,6 +46,16 @@ class _ProjectScopedCoverageObserver:
             return str(resolved.relative_to(self.project_dir))
         except ValueError:
             return None
+
+    def _cached_branch_decision_lines(self, cov, file_path: str) -> frozenset[int]:
+        cached = self._branch_decision_lines_cache.get(file_path)
+        if cached is not None:
+            return cached
+        decision_lines = frozenset(
+            int(line) for line in cov.branch_stats(file_path).keys()
+        )
+        self._branch_decision_lines_cache[file_path] = decision_lines
+        return decision_lines
 
 
 class PythonCoverageObserver(_ProjectScopedCoverageObserver):
@@ -70,6 +86,9 @@ class PythonCoverageObserver(_ProjectScopedCoverageObserver):
 
             result.lines[key] = frozenset(lines) if lines else frozenset()
             result.branches[key] = frozenset(arcs) if arcs else frozenset()
+            result.branch_decision_lines[key] = self._cached_branch_decision_lines(
+                cov, file_path
+            )
 
         if cleanup:
             coverage_file.unlink(missing_ok=True)
@@ -92,7 +111,12 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
         {
             "<abs_file_path>": {
                 "lines": [int, ...],
-                "arcs":  [[int, int], ...]
+                "arcs":  [[int, int], ...],
+                "branch_decision_lines": [int, ...],  # preferred, optional
+                "branch_stats": [  # legacy, optional
+                    {"line": int, "exits": int, "taken": int},
+                    ...
+                ]
             },
             ...
         }
@@ -128,6 +152,28 @@ class InProcessCoverageObserver(_ProjectScopedCoverageObserver):
             result.lines[key] = frozenset(lines)
             result.branches[key] = frozenset(
                 (arc[0], arc[1]) for arc in arcs if len(arc) == 2
+            )
+            branch_decision_lines = file_data.get("branch_decision_lines")
+            if isinstance(branch_decision_lines, list):
+                cached = frozenset(
+                    int(line) for line in branch_decision_lines if isinstance(line, int)
+                )
+                self._scoped_branch_decision_lines_cache[key] = cached
+                result.branch_decision_lines[key] = cached
+                continue
+
+            branch_stats = file_data.get("branch_stats") or []
+            from_legacy = frozenset(
+                int(entry["line"])
+                for entry in branch_stats
+                if isinstance(entry, dict) and "line" in entry
+            )
+            if from_legacy:
+                self._scoped_branch_decision_lines_cache[key] = from_legacy
+                result.branch_decision_lines[key] = from_legacy
+                continue
+            result.branch_decision_lines[key] = (
+                self._scoped_branch_decision_lines_cache.get(key, frozenset())
             )
 
         return result

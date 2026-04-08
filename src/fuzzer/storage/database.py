@@ -2,12 +2,13 @@
 SQLite-backed storage for corpus seeds and crash reports.
 """
 
-import sqlite3
 import re
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.corpus import SeedInput, SeedMetadata
+from fuzzer.metrics.metrics import MetricsSnapshot
 from fuzzer.observers.input import ParsedCrash
 
 
@@ -81,6 +82,20 @@ class FuzzerDatabase:
                 count               INTEGER NOT NULL DEFAULT 1,
                 first_seen_at       TEXT    NOT NULL,
                 last_seen_at        TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS fuzzer_metrics (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp             TEXT     NOT NULL,
+                corpus_size           INTEGER  NOT NULL,
+                interesting_seed      INTEGER  NOT NULL,
+                unique_crashes        INTEGER  NOT NULL,
+                total_crashes         INTEGER  NOT NULL,
+                line_coverage         INTEGER  NOT NULL DEFAULT 0,
+                branch_coverage       INTEGER  NOT NULL DEFAULT 0,
+                total_edges           INTEGER  NOT NULL,
+                executions            INTEGER  NOT NULL,
+                executions_per_sec    REAL     NOT NULL
             );
         """)
         self._migrate_crash_schema()
@@ -171,6 +186,132 @@ class FuzzerDatabase:
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Metrics
+    # ------------------------------------------------------------------
+
+    def record_metrics(self, metrics: MetricsSnapshot) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO fuzzer_metrics (
+                timestamp,
+                corpus_size,
+                interesting_seed,
+                unique_crashes,
+                total_crashes,
+                line_coverage,
+                branch_coverage,
+                total_edges,
+                executions,
+                executions_per_sec
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.timestamp,
+                metrics.corpus_size,
+                metrics.interesting_seed,
+                metrics.unique_crashes,
+                metrics.total_crashes,
+                metrics.line_coverage,
+                metrics.branch_coverage,
+                metrics.total_edges,
+                metrics.executions,
+                metrics.execs_per_sec,
+            ),
+        )
+        self._conn.commit()
+
+    def get_last_metrics(self) -> dict:
+        cursor = self._conn.execute(
+            "SELECT * FROM fuzzer_metrics ORDER BY timestamp DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            return {}
+
+        columns = [col[0] for col in cursor.description]
+        return dict(zip(columns, row))
+
+    def get_coverage_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, total_edges FROM fuzzer_metrics ORDER BY timestamp"
+        )
+        return [(ts, edges) for ts, edges in rows]
+
+    def get_unique_bugs_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, unique_crashes FROM fuzzer_metrics ORDER BY timestamp"
+        )
+        return [(ts, uniq) for ts, uniq in rows]
+
+    def get_interesting_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, interesting_seed FROM fuzzer_metrics ORDER BY timestamp"
+        )
+        return [(ts, seed) for ts, seed in rows]
+
+    def get_corpus_size(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM corpus").fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def get_latest_metrics_summary(self) -> dict[str, object]:
+        row = self._conn.execute(
+            """
+            SELECT
+                executions,
+                corpus_size,
+                unique_crashes,
+                line_coverage,
+                branch_coverage,
+                total_edges,
+                executions_per_sec
+            FROM fuzzer_metrics
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return {
+                "executions": 0,
+                "corpus_size": self.get_corpus_size(),
+                "unique_crashes": 0,
+                "executions_per_sec": 0.0,
+                "line_coverage": 0,
+                "branch_coverage": 0,
+                "arc_coverage": 0,
+            }
+
+        return {
+            "executions": int(row["executions"]),
+            "corpus_size": int(row["corpus_size"]),
+            "unique_crashes": int(row["unique_crashes"]),
+            "executions_per_sec": float(row["executions_per_sec"]),
+            "line_coverage": int(row["line_coverage"]),
+            "branch_coverage": int(row["branch_coverage"]),
+            "arc_coverage": int(row["total_edges"]),
+        }
+
+    def get_crash_site_summary(self, *, limit: int = 10) -> list[dict[str, object]]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                bug_category,
+                exception_type,
+                file,
+                line,
+                SUM(count) AS total_hits,
+                COUNT(*) AS variants
+            FROM crashes
+            GROUP BY bug_category, exception_type, file, line
+            ORDER BY total_hits DESC, variants DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     # ------------------------------------------------------------------
     # Crashes

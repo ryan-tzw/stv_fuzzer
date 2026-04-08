@@ -6,7 +6,7 @@ feedback logic can consume (coverage + behavioral markers).
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from fuzzer.executors.base import ExecutionResult
 from fuzzer.executors.coverage_exec.types import CoveragePayload
@@ -129,15 +129,27 @@ class DifferentialObserver:
     @staticmethod
     def _as_coverage_payload(value: Any) -> CoveragePayload:
         if not isinstance(value, dict):
-            return cast(CoveragePayload, {})
-        return cast(CoveragePayload, value)
+            raise TypeError(
+                "differential observer expected whitebox coverage payload to be dict, "
+                f"got {type(value).__name__}"
+            )
+        return value
 
     @staticmethod
     def _as_differential_result(value: Any) -> DifferentialResult:
-        if isinstance(value, DifferentialResult):
-            return value
-        empty_exec = ExecutionResult(stdout="", stderr="", exit_code=0, result={})
-        return DifferentialResult(
-            blackbox=cast(Any, empty_exec),
-            whitebox=cast(Any, empty_exec),
-        )
+        if not isinstance(value, DifferentialResult):
+            raise TypeError(
+                "differential observer expected DifferentialResult, "
+                f"got {type(value).__name__}"
+            )
+        if not isinstance(value.blackbox, ExecutionResult):
+            raise TypeError(
+                "differential observer expected DifferentialResult.blackbox to be "
+                f"ExecutionResult, got {type(value.blackbox).__name__}"
+            )
+        if not isinstance(value.whitebox, ExecutionResult):
+            raise TypeError(
+                "differential observer expected DifferentialResult.whitebox to be "
+                f"ExecutionResult, got {type(value.whitebox).__name__}"
+            )
+        return value

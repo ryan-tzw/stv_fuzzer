@@ -1,7 +1,5 @@
 """Grammar-based string generator built from loaded Lark grammars."""
 
-from __future__ import annotations
-
 import random
 from dataclasses import dataclass
 from pathlib import Path

@@ -8,7 +8,10 @@ cleanup; :class:`WorkerCrashedError` is raised if crashes exceed the limit.
 
 import json
 import logging
+import os
+import select
 import subprocess
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -32,13 +35,18 @@ class WorkerProcess:
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         max_restarts: int = 5,
+        response_timeout: float | None = 3.0,
     ) -> None:
         self._cmd = cmd
         self._env = env
         self._cwd = cwd
         self._max_restarts = max_restarts
+        if response_timeout is not None and response_timeout <= 0:
+            raise ValueError("response_timeout must be > 0 or None")
+        self._response_timeout = response_timeout
         self._restarts = 0
         self._proc: subprocess.Popen | None = None
+        self._stdout_buffer = ""
 
     # ------------------------------------------------------------------ #
     #  Lifecycle                                                           #
@@ -61,6 +69,7 @@ class WorkerProcess:
             )
         except OSError as exc:
             raise WorkerCrashedError(f"Failed to start worker: {exc}") from exc
+        self._stdout_buffer = ""
         logger.debug("WorkerProcess started (pid=%d): %s", self._proc.pid, self._cmd)
 
     def stop(self) -> None:
@@ -85,6 +94,7 @@ class WorkerProcess:
             self._proc.wait()
         finally:
             self._proc = None
+            self._stdout_buffer = ""
 
     def is_alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -122,7 +132,7 @@ class WorkerProcess:
             self._proc.stdin.write(line)
             self._proc.stdin.flush()
 
-            response_line = self._proc.stdout.readline()
+            response_line = self._read_response_line()
             if not response_line:
                 raise EOFError("Worker closed stdout without a response")
 
@@ -137,10 +147,44 @@ class WorkerProcess:
             BrokenPipeError,
             EOFError,
             OSError,
+            TimeoutError,
             json.JSONDecodeError,
             ValueError,
         ) as exc:
             return self._handle_crash(exc, request)
+
+    def _read_response_line(self) -> str:
+        """Read one NDJSON response line, enforcing optional response timeout."""
+        if self._proc is None or self._proc.stdout is None:
+            raise RuntimeError("WorkerProcess is not running")
+        if self._response_timeout is None:
+            return self._proc.stdout.readline()
+
+        fd = self._proc.stdout.fileno()
+        deadline = time.monotonic() + self._response_timeout
+        while True:
+            newline_idx = self._stdout_buffer.find("\n")
+            if newline_idx >= 0:
+                line = self._stdout_buffer[: newline_idx + 1]
+                self._stdout_buffer = self._stdout_buffer[newline_idx + 1 :]
+                return line
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"worker response timed out after {self._response_timeout}s"
+                )
+
+            readable, _, _ = select.select([fd], [], [], remaining)
+            if not readable:
+                raise TimeoutError(
+                    f"worker response timed out after {self._response_timeout}s"
+                )
+
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                raise EOFError("Worker closed stdout without a response")
+            self._stdout_buffer += chunk.decode("utf-8", errors="replace")
 
     def _handle_crash(
         self, exc: Exception, original_request: dict[str, Any]
@@ -155,6 +199,7 @@ class WorkerProcess:
             except Exception:
                 pass
             self._proc = None
+            self._stdout_buffer = ""
 
         self._restarts += 1
         logger.warning(

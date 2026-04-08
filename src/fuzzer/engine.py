@@ -4,18 +4,33 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 
 import time
 from datetime import datetime
+from typing import Any
 
 from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
+from fuzzer.contracts import (
+    CoverageStatsProvider,
+    CrashSignalProtocol,
+    SupportsCycleStart,
+)
 from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
+from fuzzer.metrics import (
+    TelemetryRecorder,
+    create_coverage_graph,
+    create_interesting_seed_graph,
+    create_unique_crashes_graph,
+    generate_run_report,
+)
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
 
 
 class FuzzingEngine:
+    _METRICS_SNAPSHOT_INTERVAL_S = 2.0
+
     def __init__(
-        self, config: FuzzerConfig, components: EngineComponents | None = None
+        self, config: FuzzerConfig, components: EngineComponents[Any] | None = None
     ):
         self.config = config
 
@@ -41,20 +56,32 @@ class FuzzingEngine:
 
     def start(self) -> None:
         """Prepare engine resources, such as persistent executor startup."""
-        try:
-            self.executor.start()
-        except AttributeError:
-            pass
+        self.executor.start()
 
     def stop(self) -> None:
         """Clean up resources and persist current corpus state."""
+        stop_error: BaseException | None = None
+        flush_error: BaseException | None = None
         try:
             self.executor.stop()
-        except AttributeError:
-            pass
+        except BaseException as exc:
+            stop_error = exc
 
-        self.db.flush_corpus(self.corpus.seeds())
-        self.db.close()
+        try:
+            self.db.flush_corpus(self.corpus.seeds())
+        except BaseException as exc:
+            flush_error = exc
+        finally:
+            self.db.close()
+
+        if stop_error is not None:
+            if flush_error is not None:
+                stop_error.add_note(
+                    f"database flush also failed during stop cleanup: {flush_error!r}"
+                )
+            raise stop_error
+        if flush_error is not None:
+            raise flush_error
 
     def __enter__(self) -> "FuzzingEngine":
         self.start()
@@ -77,6 +104,63 @@ class FuzzingEngine:
                 return f"reached time limit ({time_limit}s)"
         return None
 
+    def _notify_feedback_cycle_start(self, cycle: int) -> None:
+        """Notify feedback of cycle boundary when supported."""
+        if isinstance(self.feedback, SupportsCycleStart):
+            self.feedback.on_cycle_start(cycle)
+
+    def _coverage_counts(self) -> tuple[int, int, int]:
+        """Return cumulative unique line/branch/arc counts from active feedback."""
+        if not isinstance(self.feedback, CoverageStatsProvider):
+            return 0, 0, 0
+
+        line_coverage = self.feedback.total_seen_lines
+        branch_coverage = self.feedback.total_seen_branches
+        arc_coverage = self.feedback.total_seen_arcs
+        return (
+            line_coverage if isinstance(line_coverage, int) else 0,
+            branch_coverage if isinstance(branch_coverage, int) else 0,
+            arc_coverage if isinstance(arc_coverage, int) else 0,
+        )
+
+    def _generate_run_end_graphs(self) -> None:
+        """Generate telemetry graphs for the completed run, warning on failures."""
+        output_dir = self.run_dir / "report" / "figures"
+        graph_jobs = (
+            (
+                "coverage",
+                create_coverage_graph,
+                self.db.get_coverage_data,
+            ),
+            (
+                "unique_crashes",
+                create_unique_crashes_graph,
+                self.db.get_unique_bugs_data,
+            ),
+            (
+                "interesting_seeds",
+                create_interesting_seed_graph,
+                self.db.get_interesting_data,
+            ),
+        )
+
+        for graph_name, graph_fn, data_loader in graph_jobs:
+            try:
+                graph_fn(data_loader(), output_dir)
+            except BaseException as exc:
+                self.logger.log_stop_reason(
+                    f"warning: failed to generate {graph_name} graph: {exc!r}"
+                )
+
+    def _generate_run_end_report(self) -> None:
+        """Generate markdown run report, warning on failures."""
+        try:
+            generate_run_report(run_dir=self.run_dir, db=self.db)
+        except BaseException as exc:
+            self.logger.log_stop_reason(
+                f"warning: failed to generate markdown report: {exc!r}"
+            )
+
     def _execute_once(
         self,
         *,
@@ -84,7 +168,7 @@ class FuzzingEngine:
         executions: int,
         cycle: int,
         unique_crashes: int,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int, int, int, bool, bool]:
         mutated, used_ops = self.mutator.mutate(seed.data)
         run_result = self.executor.run(mutated)
         self.corpus.record_fuzzed(seed)
@@ -107,7 +191,9 @@ class FuzzingEngine:
         execution_id = executions + 1
         reward = 0.0
         if is_crash:
-            parsed_crash = getattr(signal, "parsed_crash", None)
+            parsed_crash = (
+                signal.parsed_crash if isinstance(signal, CrashSignalProtocol) else None
+            )
             if parsed_crash is None:
                 self.logger.log_stop_reason(
                     "warning: crash detected but observer produced no parsed crash"
@@ -122,16 +208,36 @@ class FuzzingEngine:
                     self.logger.log_duplicate_crash(execution_id, cycle)
 
         if add_to_corpus:
+            corpus_size_before = self.corpus.size()
             self.corpus.add(mutated)
-            self.logger.log_corpus_add(execution_id, cycle)
-            reward += 1.0
+            added_to_corpus = self.corpus.size() > corpus_size_before
+            if added_to_corpus:
+                self.logger.log_corpus_add(execution_id, cycle)
+                reward += 1.0
+        else:
+            added_to_corpus = False
 
         if used_ops:
             self.mutator.update_weights(used_ops, reward)
 
         executions = execution_id
-        self.logger.tick(executions=executions, cycles=cycle)
-        return executions, unique_crashes
+        line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
+        self.logger.tick(
+            executions=executions,
+            cycles=cycle,
+            line_coverage=line_coverage,
+            branch_coverage=branch_coverage,
+            arc_coverage=arc_coverage,
+        )
+        return (
+            executions,
+            unique_crashes,
+            line_coverage,
+            branch_coverage,
+            arc_coverage,
+            is_crash,
+            added_to_corpus,
+        )
 
     def run(self) -> None:
         self.corpus.load()
@@ -139,14 +245,41 @@ class FuzzingEngine:
         executions = 0
         cycles = 0
         unique_crashes = 0
+        total_crashes = 0
+        interesting_seed = 0
+        line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
         start_time = time.monotonic()
+        telemetry = TelemetryRecorder(
+            self.db,
+            interval_s=self._METRICS_SNAPSHOT_INTERVAL_S,
+        )
 
         with self.logger:
             self.logger.start(
-                corpus_size=self.corpus.size(), executions=executions, cycles=cycles
+                corpus_size=self.corpus.size(),
+                executions=executions,
+                cycles=cycles,
+                line_coverage=line_coverage,
+                branch_coverage=branch_coverage,
+                arc_coverage=arc_coverage,
             )
 
+            run_error: BaseException | None = None
             try:
+                warning = telemetry.start(
+                    now=start_time,
+                    corpus_size=self.corpus.size(),
+                    interesting_seed=interesting_seed,
+                    unique_crashes=unique_crashes,
+                    total_crashes=total_crashes,
+                    line_coverage=line_coverage,
+                    branch_coverage=branch_coverage,
+                    total_edges=arc_coverage,
+                    executions=executions,
+                )
+                if warning is not None:
+                    self.logger.log_stop_reason(warning)
+
                 self.start()
                 while True:
                     stop_reason = self._cycle_limit_reason(cycles)
@@ -155,14 +288,16 @@ class FuzzingEngine:
                         break
 
                     active_cycle = cycles + 1
-                    seed_index = 0
-                    while seed_index < self.corpus.size():
+                    self._notify_feedback_cycle_start(active_cycle)
+                    cycle_pool = self.corpus.seeds()
+                    cycle_budget = len(cycle_pool)
+                    for _ in range(cycle_budget):
                         stop_reason = self._time_limit_reason(start_time)
                         if stop_reason is not None:
                             self.logger.log_stop_reason(stop_reason)
                             break
 
-                        seed = self.corpus.get(seed_index)
+                        seed = self.scheduler.next(cycle_pool)
                         self.corpus.record_picked(seed)
                         energy = self.scheduler.energy(seed)
 
@@ -172,29 +307,86 @@ class FuzzingEngine:
                                 self.logger.log_stop_reason(stop_reason)
                                 break
 
-                            executions, unique_crashes = self._execute_once(
+                            (
+                                executions,
+                                unique_crashes,
+                                line_coverage,
+                                branch_coverage,
+                                arc_coverage,
+                                is_crash,
+                                added_to_corpus,
+                            ) = self._execute_once(
                                 seed=seed,
                                 executions=executions,
                                 cycle=active_cycle,
                                 unique_crashes=unique_crashes,
                             )
+                            if is_crash:
+                                total_crashes += 1
+                            if added_to_corpus:
+                                interesting_seed += 1
+
+                            warning = telemetry.maybe_record(
+                                now=time.monotonic(),
+                                corpus_size=self.corpus.size(),
+                                interesting_seed=interesting_seed,
+                                unique_crashes=unique_crashes,
+                                total_crashes=total_crashes,
+                                line_coverage=line_coverage,
+                                branch_coverage=branch_coverage,
+                                total_edges=arc_coverage,
+                                executions=executions,
+                            )
+                            if warning is not None:
+                                self.logger.log_stop_reason(warning)
 
                         if stop_reason is not None:
                             break
-
-                        seed_index += 1
 
                     if stop_reason is not None:
                         break
 
                     cycles = active_cycle
-                    self.logger.tick(executions=executions, cycles=cycles)
+                    self.logger.tick(
+                        executions=executions,
+                        cycles=cycles,
+                        line_coverage=line_coverage,
+                        branch_coverage=branch_coverage,
+                        arc_coverage=arc_coverage,
+                    )
 
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")
+            except BaseException as exc:
+                run_error = exc
 
             finally:
-                self.stop()
+                warning = telemetry.finalize(
+                    now=time.monotonic(),
+                    corpus_size=self.corpus.size(),
+                    interesting_seed=interesting_seed,
+                    unique_crashes=unique_crashes,
+                    total_crashes=total_crashes,
+                    line_coverage=line_coverage,
+                    branch_coverage=branch_coverage,
+                    total_edges=arc_coverage,
+                    executions=executions,
+                )
+                if warning is not None:
+                    self.logger.log_stop_reason(warning)
+
+                self._generate_run_end_graphs()
+                self._generate_run_end_report()
+
+                try:
+                    self.stop()
+                except BaseException as stop_exc:
+                    if run_error is None:
+                        raise
+                    run_error.add_note(f"engine stop cleanup also failed: {stop_exc!r}")
+
+            if run_error is not None:
+                raise run_error
 
         elapsed = time.monotonic() - start_time
         self.logger.print_summary(executions=executions, cycles=cycles, elapsed=elapsed)

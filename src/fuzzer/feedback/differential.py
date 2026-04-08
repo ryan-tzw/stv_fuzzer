@@ -53,3 +53,22 @@ class DifferentialFeedback:
             return True
 
         return False
+
+    def on_cycle_start(self, cycle: int) -> None:
+        """Forward cycle boundary notification to internal coverage feedback."""
+        self._coverage_feedback.on_cycle_start(cycle)
+
+    @property
+    def total_seen_lines(self) -> int:
+        """Expose cumulative unique lines seen by whitebox coverage feedback."""
+        return self._coverage_feedback.total_seen_lines
+
+    @property
+    def total_seen_branches(self) -> int:
+        """Expose cumulative unique branches seen by whitebox coverage feedback."""
+        return self._coverage_feedback.total_seen_branches
+
+    @property
+    def total_seen_arcs(self) -> int:
+        """Expose cumulative unique arcs seen by whitebox coverage feedback."""
+        return self._coverage_feedback.total_seen_arcs

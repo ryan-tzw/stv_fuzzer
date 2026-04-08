@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 def _make_input(*, stdout: str, stderr: str):
     from fuzzer.executors.base import ExecutionResult
     from fuzzer.executors.differential.composed import DifferentialResult

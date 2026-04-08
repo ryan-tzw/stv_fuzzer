@@ -267,9 +267,15 @@ def _parse_worker_status(status_path: Path, log_path: Path) -> dict[str, str]:
 def _tail_text(path: Path, max_bytes: int = 24000) -> str:
     if not path.exists():
         return ""
-    data = path.read_bytes()
-    if len(data) > max_bytes:
-        data = data[-max_bytes:]
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            file_size = handle.tell()
+            start = max(0, file_size - max_bytes)
+            handle.seek(start)
+            data = handle.read(max_bytes)
+    except OSError:
+        return ""
     return data.decode("utf-8", errors="replace")
 
 
@@ -324,6 +330,10 @@ def _build_worker_cmd(config: FuzzerConfig, worker_runs_dir: Path) -> list[str]:
     if config.blackbox_binary is not None:
         cmd.extend(["--blackbox-binary", str(config.blackbox_binary)])
         cmd.append(f"--blackbox-input-flag={config.blackbox_input_flag}")
+        if config.blackbox_timeout is None:
+            cmd.append("--blackbox-timeout=-1")
+        else:
+            cmd.append(f"--blackbox-timeout={config.blackbox_timeout}")
         for arg in config.blackbox_args:
             cmd.append(f"--blackbox-arg={arg}")
 

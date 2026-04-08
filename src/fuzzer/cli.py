@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Any
 
 from fuzzer.config import (
     CORPUS_DIR,
@@ -11,6 +12,81 @@ from fuzzer.config import (
 from fuzzer.mutator import AVAILABLE_STRATEGIES
 from fuzzer.engine import FuzzingEngine
 from fuzzer.parallel import run_parallel, run_parallel_profiles
+
+
+def _coalesce(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _build_config_from_base(
+    *,
+    args: argparse.Namespace,
+    base: dict[str, Any],
+    max_cycles_arg: int | None,
+    time_limit: int | None,
+    require_target_fields: bool,
+) -> FuzzerConfig:
+    project_dir = _coalesce(args.project_dir, base.get("project_dir"))
+    harness = _coalesce(args.harness, base.get("harness"))
+    corpus = _coalesce(args.corpus, base.get("corpus"))
+
+    if require_target_fields:
+        if project_dir is None:
+            raise ValueError("Missing --project-dir (or set it in --profile)")
+        if harness is None:
+            raise ValueError("Missing --harness (or set it in --profile)")
+        if corpus is None:
+            raise ValueError("Missing --corpus (or set it in --profile)")
+
+    return FuzzerConfig(
+        project_dir=project_dir,
+        harness=harness,
+        corpus=corpus,
+        mode=_coalesce(args.mode, base.get("mode"), FuzzerConfig.mode),
+        harness_args=(
+            tuple(args.harness_arg)
+            if args.harness_arg is not None
+            else tuple(base.get("harness_args", FuzzerConfig.harness_args))
+        ),
+        blackbox_binary=_coalesce(args.blackbox_binary, base.get("blackbox_binary")),
+        blackbox_input_flag=_coalesce(
+            args.blackbox_input_flag,
+            base.get("blackbox_input_flag"),
+            FuzzerConfig.blackbox_input_flag,
+        ),
+        blackbox_args=(
+            tuple(args.blackbox_arg)
+            if args.blackbox_arg is not None
+            else tuple(base.get("blackbox_args", FuzzerConfig.blackbox_args))
+        ),
+        blackbox_timeout=_coalesce(
+            args.blackbox_timeout,
+            base.get("blackbox_timeout"),
+            FuzzerConfig.blackbox_timeout,
+        ),
+        runs_dir=_coalesce(args.runs_dir, base.get("runs_dir"), FuzzerConfig.runs_dir),
+        max_cycles=_coalesce(
+            max_cycles_arg, base.get("max_cycles"), FuzzerConfig.max_cycles
+        ),
+        time_limit=_coalesce(
+            time_limit, base.get("time_limit"), FuzzerConfig.time_limit
+        ),
+        scheduler=_coalesce(
+            args.scheduler, base.get("scheduler"), FuzzerConfig.scheduler
+        ),
+        mutation_strategy=_coalesce(
+            args.mutation_strategy,
+            base.get("mutation_strategy"),
+            FuzzerConfig.mutation_strategy,
+        ),
+        energy_c=_coalesce(args.energy_c, base.get("energy_c"), FuzzerConfig.energy_c),
+        max_energy=_coalesce(
+            args.max_energy, base.get("max_energy"), FuzzerConfig.max_energy
+        ),
+    )
 
 
 def main() -> int:
@@ -90,6 +166,15 @@ def main() -> int:
         action="append",
         default=None,
         help="Static argument passed to blackbox binary (repeatable)",
+    )
+    parser.add_argument(
+        "--blackbox-timeout",
+        type=float,
+        default=None,
+        help=(
+            "Timeout in seconds for blackbox binary execution "
+            f"(-1 to disable, default: {FuzzerConfig.blackbox_timeout})"
+        ),
     )
 
     # Output
@@ -183,6 +268,7 @@ def main() -> int:
             or args.blackbox_binary is not None
             or args.blackbox_input_flag is not None
             or args.blackbox_arg is not None
+            or args.blackbox_timeout is not None
         ):
             parser.error(
                 "target-specific overrides are not supported with --profiles; "
@@ -193,59 +279,12 @@ def main() -> int:
         for profile_name in profile_names:
             base = profile_overrides(profile_name)
             configs.append(
-                FuzzerConfig(
-                    project_dir=base["project_dir"],
-                    harness=base["harness"],
-                    corpus=base["corpus"],
-                    mode=base.get("mode", FuzzerConfig.mode),
-                    harness_args=tuple(
-                        base.get("harness_args", FuzzerConfig.harness_args)
-                    ),
-                    blackbox_binary=base.get("blackbox_binary"),
-                    blackbox_input_flag=base.get(
-                        "blackbox_input_flag",
-                        FuzzerConfig.blackbox_input_flag,
-                    ),
-                    blackbox_args=tuple(
-                        base.get("blackbox_args", FuzzerConfig.blackbox_args)
-                    ),
-                    runs_dir=(
-                        args.runs_dir
-                        if args.runs_dir is not None
-                        else base.get("runs_dir", FuzzerConfig.runs_dir)
-                    ),
-                    max_cycles=(
-                        max_cycles_arg
-                        if max_cycles_arg is not None
-                        else base.get("max_cycles", FuzzerConfig.max_cycles)
-                    ),
-                    time_limit=(
-                        time_limit
-                        if time_limit is not None
-                        else base.get("time_limit", FuzzerConfig.time_limit)
-                    ),
-                    scheduler=(
-                        args.scheduler
-                        if args.scheduler is not None
-                        else base.get("scheduler", FuzzerConfig.scheduler)
-                    ),
-                    mutation_strategy=(
-                        args.mutation_strategy
-                        if args.mutation_strategy is not None
-                        else base.get(
-                            "mutation_strategy", FuzzerConfig.mutation_strategy
-                        )
-                    ),
-                    energy_c=(
-                        args.energy_c
-                        if args.energy_c is not None
-                        else base.get("energy_c", FuzzerConfig.energy_c)
-                    ),
-                    max_energy=(
-                        args.max_energy
-                        if args.max_energy is not None
-                        else base.get("max_energy", FuzzerConfig.max_energy)
-                    ),
+                _build_config_from_base(
+                    args=args,
+                    base=base,
+                    max_cycles_arg=max_cycles_arg,
+                    time_limit=time_limit,
+                    require_target_fields=False,
                 )
             )
 
@@ -253,82 +292,18 @@ def main() -> int:
 
     base = profile_overrides(args.profile) if args.profile is not None else {}
 
-    project_dir = (
-        args.project_dir if args.project_dir is not None else base.get("project_dir")
-    )
-    harness = args.harness if args.harness is not None else base.get("harness")
-    corpus = args.corpus if args.corpus is not None else base.get("corpus")
-
-    if project_dir is None:
-        parser.error("Missing --project-dir (or set it in --profile)")
-    if harness is None:
-        parser.error("Missing --harness (or set it in --profile)")
-    if corpus is None:
-        parser.error("Missing --corpus (or set it in --profile)")
-
-    # Build config in one pass so __post_init__ normalization/validation applies
-    # to both defaults and CLI overrides.
-    config = FuzzerConfig(
-        project_dir=project_dir,
-        harness=harness,
-        corpus=corpus,
-        mode=args.mode
-        if args.mode is not None
-        else base.get("mode", FuzzerConfig.mode),
-        harness_args=(
-            tuple(args.harness_arg)
-            if args.harness_arg is not None
-            else tuple(base.get("harness_args", FuzzerConfig.harness_args))
-        ),
-        blackbox_binary=(
-            args.blackbox_binary
-            if args.blackbox_binary is not None
-            else base.get("blackbox_binary")
-        ),
-        blackbox_input_flag=(
-            args.blackbox_input_flag
-            if args.blackbox_input_flag is not None
-            else base.get("blackbox_input_flag", FuzzerConfig.blackbox_input_flag)
-        ),
-        blackbox_args=(
-            tuple(args.blackbox_arg)
-            if args.blackbox_arg is not None
-            else tuple(base.get("blackbox_args", FuzzerConfig.blackbox_args))
-        ),
-        runs_dir=(
-            args.runs_dir
-            if args.runs_dir is not None
-            else base.get("runs_dir", FuzzerConfig.runs_dir)
-        ),
-        max_cycles=(
-            max_cycles_arg
-            if max_cycles_arg is not None
-            else base.get("max_cycles", FuzzerConfig.max_cycles)
-        ),
-        time_limit=(
-            time_limit
-            if time_limit is not None
-            else base.get("time_limit", FuzzerConfig.time_limit)
-        ),
-        scheduler=args.scheduler
-        if args.scheduler is not None
-        else base.get("scheduler", FuzzerConfig.scheduler),
-        mutation_strategy=(
-            args.mutation_strategy
-            if args.mutation_strategy is not None
-            else base.get("mutation_strategy", FuzzerConfig.mutation_strategy)
-        ),
-        energy_c=(
-            args.energy_c
-            if args.energy_c is not None
-            else base.get("energy_c", FuzzerConfig.energy_c)
-        ),
-        max_energy=(
-            args.max_energy
-            if args.max_energy is not None
-            else base.get("max_energy", FuzzerConfig.max_energy)
-        ),
-    )
+    try:
+        # Build config in one pass so __post_init__ normalization/validation applies
+        # to both defaults and CLI overrides.
+        config = _build_config_from_base(
+            args=args,
+            base=base,
+            max_cycles_arg=max_cycles_arg,
+            time_limit=time_limit,
+            require_target_fields=True,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.parallel_workers > 1:
         return run_parallel(config, args.parallel_workers)

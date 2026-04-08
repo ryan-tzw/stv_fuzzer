@@ -2,7 +2,15 @@
 Mutator: applies a mutation strategy to produce a mutated input.
 """
 
-from fuzzer.mutator.base import BaseMutator, MutationStrategy, MutationOperation
+import random
+
+from fuzzer.mutator.base import BaseMutator, MutationOperation, MutationStrategy
+from fuzzer.mutator.string.operations import (
+    DeleteChar,
+    DuplicateChar,
+    InsertRandomChar,
+    RandomiseChar,
+)
 
 
 class Mutator(BaseMutator):
@@ -12,14 +20,26 @@ class Mutator(BaseMutator):
 
             strategy = build_strategy("random_single", grammar_name="ipv4")
         self.strategy = strategy
+        self._string_fallback_ops: tuple[MutationOperation, ...] = (
+            RandomiseChar(),
+            DeleteChar(),
+            InsertRandomChar(),
+            DuplicateChar(),
+        )
 
     def mutate(self, data: str) -> tuple[str, list[MutationOperation]]:
         """Apply the strategy's selected operations to the input and return the result."""
         operations = self.strategy.select()
-        mutated = data
+        original = data
         for operation in operations:
-            mutated = operation.mutate(mutated)
-        return mutated, operations
+            data = operation.mutate(data)
+        if data != original:
+            return data, operations
+
+        fallback_mutated = self._mutate_as_string(original)
+        if fallback_mutated != original:
+            return fallback_mutated, []
+        return original, operations
 
     def update_weights(
         self, operations: list[MutationOperation], reward: float = 0.0
@@ -27,3 +47,12 @@ class Mutator(BaseMutator):
         """Delegate weight updates to the internal strategy."""
         for op in operations:
             self.strategy.update_weight(op, reward)
+
+    def _mutate_as_string(self, data: str) -> str:
+        operations = list(self._string_fallback_ops)
+        random.shuffle(operations)
+        for operation in operations:
+            mutated = operation.mutate(data)
+            if mutated != data:
+                return mutated
+        return data
