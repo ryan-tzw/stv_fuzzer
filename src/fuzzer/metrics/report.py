@@ -89,7 +89,6 @@ def _graph_section_lines(report_dir: Path) -> list[str]:
         if graph_path.exists():
             lines.append(f"### {title}")
             lines.append(f"![{title}]({rel})")
-            lines.append(f"[Open image]({rel})")
         else:
             lines.append(f"- {title}: not available")
         lines.append("")
@@ -109,10 +108,19 @@ def _crash_summary_lines(rows: list[dict[str, object]]) -> list[str]:
     for row in rows:
         category = str(row.get("bug_category", "unknown"))
         exc = str(row.get("exception_type", "unknown"))
-        file = str(row.get("file", "unknown"))
+        file = _trim_to_targets_prefix(str(row.get("file", "unknown")))
         line = row.get("line", -1)
         hits = row.get("total_hits", 0)
         variants = row.get("variants", 0)
         location = f"{file}:{line}"
         lines.append(f"| {category} | {exc} | {location} | {hits} | {variants} |")
     return lines
+
+
+def _trim_to_targets_prefix(file_path: str) -> str:
+    normalized = file_path.replace("\\", "/")
+    marker = "targets/"
+    idx = normalized.find(marker)
+    if idx == -1:
+        return file_path
+    return normalized[idx:]
