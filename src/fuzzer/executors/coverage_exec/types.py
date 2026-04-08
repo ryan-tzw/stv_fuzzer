@@ -12,6 +12,8 @@ class BranchStatEntry(TypedDict):
 class CoverageEntry(TypedDict):
     lines: list[int]
     arcs: list[list[int]]
+    branch_decision_lines: NotRequired[list[int]]
+    # Legacy compatibility field; newer workers emit branch_decision_lines.
     branch_stats: NotRequired[list[BranchStatEntry]]
 
 

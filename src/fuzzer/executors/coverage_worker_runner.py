@@ -16,19 +16,25 @@ from typing import NotRequired, TypedDict
 import coverage as _coverage_module
 
 
-class _BranchStatEntry(TypedDict):
-    line: int
-    exits: int
-    taken: int
-
-
 class _CoverageEntry(TypedDict):
     lines: list[int]
     arcs: list[list[int]]
-    branch_stats: NotRequired[list[_BranchStatEntry]]
+    branch_decision_lines: NotRequired[list[int]]
 
 
 _CoveragePayload = dict[str, _CoverageEntry]
+_BRANCH_DECISION_LINES_CACHE: dict[str, list[int]] = {}
+_BRANCH_DECISION_LINES_SENT: set[str] = set()
+
+
+def _branch_decision_lines(cov: _coverage_module.Coverage, file_path: str) -> list[int]:
+    cached = _BRANCH_DECISION_LINES_CACHE.get(file_path)
+    if cached is not None:
+        return cached
+    decision_lines = [line for line, _ in sorted(cov.branch_stats(file_path).items())]
+    _BRANCH_DECISION_LINES_CACHE[file_path] = decision_lines
+    return decision_lines
+
 
 # --------------------------------------------------------------------------- #
 #  Core: run the harness once and return a payload dict                       #
@@ -90,15 +96,14 @@ def _run_once(harness_path: str, harness_argv: list, input_str: str | None) -> d
     for file_path in cov_data.measured_files():
         lines = cov_data.lines(file_path)
         arcs = cov_data.arcs(file_path)
-        branch_stats = cov.branch_stats(file_path)
-        coverage_dict[file_path] = {
+        entry: _CoverageEntry = {
             "lines": list(lines) if lines else [],
             "arcs": [list(a) for a in arcs] if arcs else [],
-            "branch_stats": [
-                {"line": line, "exits": exits, "taken": taken}
-                for line, (exits, taken) in sorted(branch_stats.items())
-            ],
         }
+        if file_path not in _BRANCH_DECISION_LINES_SENT:
+            entry["branch_decision_lines"] = _branch_decision_lines(cov, file_path)
+            _BRANCH_DECISION_LINES_SENT.add(file_path)
+        coverage_dict[file_path] = entry
 
     return {
         "stdout": captured_out.getvalue(),
