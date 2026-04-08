@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.corpus import SeedInput, SeedMetadata
-from fuzzer.metrics import MetricsSnapshot
+from fuzzer.metrics.metrics import MetricsSnapshot
 from fuzzer.observers.input import ParsedCrash
 
 
@@ -224,30 +224,18 @@ class FuzzerDatabase:
         rows = self._conn.execute(
             "SELECT timestamp, total_edges FROM fuzzer_metrics ORDER BY timestamp"
         )
-
-        if rows is None:
-            return []
-
         return [(ts, edges) for ts, edges in rows]
 
     def get_unique_bugs_data(self) -> list[tuple[str, int]]:
         rows = self._conn.execute(
             "SELECT timestamp, unique_crashes FROM fuzzer_metrics ORDER BY timestamp"
         )
-
-        if rows is None:
-            return []
-
         return [(ts, uniq) for ts, uniq in rows]
 
     def get_interesting_data(self) -> list[tuple[str, int]]:
         rows = self._conn.execute(
             "SELECT timestamp, interesting_seed FROM fuzzer_metrics ORDER BY timestamp"
         )
-
-        if rows is None:
-            return []
-
         return [(ts, seed) for ts, seed in rows]
 
     # ------------------------------------------------------------------
