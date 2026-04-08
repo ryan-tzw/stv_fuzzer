@@ -15,11 +15,14 @@ from fuzzer.contracts import (
 )
 from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
+from fuzzer.metrics import TelemetryRecorder
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
 
 
 class FuzzingEngine:
+    _METRICS_SNAPSHOT_INTERVAL_S = 2.0
+
     def __init__(
         self, config: FuzzerConfig, components: EngineComponents[Any] | None = None
     ):
@@ -121,7 +124,7 @@ class FuzzingEngine:
         executions: int,
         cycle: int,
         unique_crashes: int,
-    ) -> tuple[int, int, int, int, int]:
+    ) -> tuple[int, int, int, int, int, bool, bool]:
         mutated = self.mutator.mutate(seed.data)
         run_result = self.executor.run(mutated)
         self.corpus.record_fuzzed(seed)
@@ -159,8 +162,13 @@ class FuzzingEngine:
                     self.logger.log_duplicate_crash(execution_id, cycle)
 
         if add_to_corpus:
+            corpus_size_before = self.corpus.size()
             self.corpus.add(mutated)
-            self.logger.log_corpus_add(execution_id, cycle)
+            added_to_corpus = self.corpus.size() > corpus_size_before
+            if added_to_corpus:
+                self.logger.log_corpus_add(execution_id, cycle)
+        else:
+            added_to_corpus = False
 
         executions = execution_id
         line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
@@ -171,7 +179,15 @@ class FuzzingEngine:
             branch_coverage=branch_coverage,
             arc_coverage=arc_coverage,
         )
-        return executions, unique_crashes, line_coverage, branch_coverage, arc_coverage
+        return (
+            executions,
+            unique_crashes,
+            line_coverage,
+            branch_coverage,
+            arc_coverage,
+            is_crash,
+            added_to_corpus,
+        )
 
     def run(self) -> None:
         self.corpus.load()
@@ -179,8 +195,14 @@ class FuzzingEngine:
         executions = 0
         cycles = 0
         unique_crashes = 0
+        total_crashes = 0
+        interesting_seed = 0
         line_coverage, branch_coverage, arc_coverage = self._coverage_counts()
         start_time = time.monotonic()
+        telemetry = TelemetryRecorder(
+            self.db,
+            interval_s=self._METRICS_SNAPSHOT_INTERVAL_S,
+        )
 
         with self.logger:
             self.logger.start(
@@ -194,6 +216,18 @@ class FuzzingEngine:
 
             run_error: BaseException | None = None
             try:
+                warning = telemetry.start(
+                    now=start_time,
+                    corpus_size=self.corpus.size(),
+                    interesting_seed=interesting_seed,
+                    unique_crashes=unique_crashes,
+                    total_crashes=total_crashes,
+                    total_edges=arc_coverage,
+                    executions=executions,
+                )
+                if warning is not None:
+                    self.logger.log_stop_reason(warning)
+
                 self.start()
                 while True:
                     stop_reason = self._cycle_limit_reason(cycles)
@@ -227,12 +261,30 @@ class FuzzingEngine:
                                 line_coverage,
                                 branch_coverage,
                                 arc_coverage,
+                                is_crash,
+                                added_to_corpus,
                             ) = self._execute_once(
                                 seed=seed,
                                 executions=executions,
                                 cycle=active_cycle,
                                 unique_crashes=unique_crashes,
                             )
+                            if is_crash:
+                                total_crashes += 1
+                            if added_to_corpus:
+                                interesting_seed += 1
+
+                            warning = telemetry.maybe_record(
+                                now=time.monotonic(),
+                                corpus_size=self.corpus.size(),
+                                interesting_seed=interesting_seed,
+                                unique_crashes=unique_crashes,
+                                total_crashes=total_crashes,
+                                total_edges=arc_coverage,
+                                executions=executions,
+                            )
+                            if warning is not None:
+                                self.logger.log_stop_reason(warning)
 
                         if stop_reason is not None:
                             break
@@ -255,6 +307,18 @@ class FuzzingEngine:
                 run_error = exc
 
             finally:
+                warning = telemetry.finalize(
+                    now=time.monotonic(),
+                    corpus_size=self.corpus.size(),
+                    interesting_seed=interesting_seed,
+                    unique_crashes=unique_crashes,
+                    total_crashes=total_crashes,
+                    total_edges=arc_coverage,
+                    executions=executions,
+                )
+                if warning is not None:
+                    self.logger.log_stop_reason(warning)
+
                 try:
                     self.stop()
                 except BaseException as stop_exc:
