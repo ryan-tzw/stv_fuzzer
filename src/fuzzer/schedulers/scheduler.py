@@ -55,11 +55,16 @@ class FastScheduler(Scheduler):
     def __init__(self, c: float = 1.0, max_energy: int = 10_000):
         self.c = c
         self.max_energy = max_energy
+        self._next_index = 0
 
     def next(self, seeds: list[SeedInput]) -> SeedInput:
         if not seeds:
             raise ValueError("Cannot schedule from an empty seed pool.")
-        return random.choice(seeds)
+        if self._next_index >= len(seeds):
+            self._next_index %= len(seeds)
+        selected = seeds[self._next_index]
+        self._next_index = (self._next_index + 1) % len(seeds)
+        return selected
 
     def energy(self, seed: SeedInput) -> int:
         s = seed.metadata.times_picked

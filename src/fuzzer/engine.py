@@ -192,14 +192,15 @@ class FuzzingEngine:
 
                     active_cycle = cycles + 1
                     self._notify_feedback_cycle_start(active_cycle)
-                    seed_index = 0
-                    while seed_index < self.corpus.size():
+                    cycle_pool = self.corpus.seeds()
+                    cycle_budget = len(cycle_pool)
+                    for _ in range(cycle_budget):
                         stop_reason = self._time_limit_reason(start_time)
                         if stop_reason is not None:
                             self.logger.log_stop_reason(stop_reason)
                             break
 
-                        seed = self.corpus.get(seed_index)
+                        seed = self.scheduler.next(cycle_pool)
                         self.corpus.record_picked(seed)
                         energy = self.scheduler.energy(seed)
 
@@ -224,8 +225,6 @@ class FuzzingEngine:
 
                         if stop_reason is not None:
                             break
-
-                        seed_index += 1
 
                     if stop_reason is not None:
                         break
