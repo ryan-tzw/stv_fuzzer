@@ -3,6 +3,7 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 """
 
 import time
+import shutil
 from datetime import datetime
 from typing import Any
 
@@ -161,6 +162,25 @@ class FuzzingEngine:
                 f"warning: failed to generate markdown report: {exc!r}"
             )
 
+    def _cleanup_target_logs_once(self) -> None:
+        """Delete known target-generated logs directories before fuzzing starts."""
+        candidates = {self.config.project_dir / "logs"}
+        if (
+            self.config.mode == "differential"
+            and self.config.blackbox_binary is not None
+        ):
+            candidates.add(self.config.blackbox_binary.parent / "logs")
+
+        for logs_dir in candidates:
+            if not logs_dir.is_dir():
+                continue
+            try:
+                shutil.rmtree(logs_dir)
+            except BaseException as exc:
+                self.logger.log_stop_reason(
+                    f"warning: failed to remove target logs directory {logs_dir}: {exc!r}"
+                )
+
     def _execute_once(
         self,
         *,
@@ -280,6 +300,7 @@ class FuzzingEngine:
                 if warning is not None:
                     self.logger.log_stop_reason(warning)
 
+                self._cleanup_target_logs_once()
                 self.start()
                 while True:
                     stop_reason = self._cycle_limit_reason(cycles)
