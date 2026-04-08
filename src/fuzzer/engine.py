@@ -15,7 +15,12 @@ from fuzzer.contracts import (
 )
 from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
-from fuzzer.metrics import TelemetryRecorder
+from fuzzer.metrics import (
+    TelemetryRecorder,
+    create_coverage_graph,
+    create_interesting_seed_graph,
+    create_unique_crashes_graph,
+)
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
 
@@ -116,6 +121,35 @@ class FuzzingEngine:
             branch_coverage if isinstance(branch_coverage, int) else 0,
             arc_coverage if isinstance(arc_coverage, int) else 0,
         )
+
+    def _generate_run_end_graphs(self) -> None:
+        """Generate telemetry graphs for the completed run, warning on failures."""
+        output_dir = self.run_dir / "report" / "figures"
+        graph_jobs = (
+            (
+                "coverage",
+                create_coverage_graph,
+                self.db.get_coverage_data,
+            ),
+            (
+                "unique_crashes",
+                create_unique_crashes_graph,
+                self.db.get_unique_bugs_data,
+            ),
+            (
+                "interesting_seeds",
+                create_interesting_seed_graph,
+                self.db.get_interesting_data,
+            ),
+        )
+
+        for graph_name, graph_fn, data_loader in graph_jobs:
+            try:
+                graph_fn(data_loader(), output_dir)
+            except BaseException as exc:
+                self.logger.log_stop_reason(
+                    f"warning: failed to generate {graph_name} graph: {exc!r}"
+                )
 
     def _execute_once(
         self,
@@ -318,6 +352,8 @@ class FuzzingEngine:
                 )
                 if warning is not None:
                     self.logger.log_stop_reason(warning)
+
+                self._generate_run_end_graphs()
 
                 try:
                     self.stop()
