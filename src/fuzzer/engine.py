@@ -20,6 +20,7 @@ from fuzzer.metrics import (
     create_coverage_graph,
     create_interesting_seed_graph,
     create_unique_crashes_graph,
+    generate_run_report,
 )
 from fuzzer.observers import ObservationInput
 from fuzzer.storage.database import FuzzerDatabase
@@ -150,6 +151,15 @@ class FuzzingEngine:
                 self.logger.log_stop_reason(
                     f"warning: failed to generate {graph_name} graph: {exc!r}"
                 )
+
+    def _generate_run_end_report(self) -> None:
+        """Generate markdown run report, warning on failures."""
+        try:
+            generate_run_report(run_dir=self.run_dir, db=self.db)
+        except BaseException as exc:
+            self.logger.log_stop_reason(
+                f"warning: failed to generate markdown report: {exc!r}"
+            )
 
     def _execute_once(
         self,
@@ -354,6 +364,7 @@ class FuzzingEngine:
                     self.logger.log_stop_reason(warning)
 
                 self._generate_run_end_graphs()
+                self._generate_run_end_report()
 
                 try:
                     self.stop()

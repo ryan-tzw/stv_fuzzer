@@ -238,6 +238,64 @@ class FuzzerDatabase:
         )
         return [(ts, seed) for ts, seed in rows]
 
+    def get_corpus_size(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM corpus").fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def get_latest_metrics_summary(self) -> dict[str, object]:
+        row = self._conn.execute(
+            """
+            SELECT
+                executions,
+                corpus_size,
+                unique_crashes,
+                total_edges,
+                executions_per_sec
+            FROM fuzzer_metrics
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return {
+                "executions": 0,
+                "corpus_size": self.get_corpus_size(),
+                "unique_crashes": 0,
+                "executions_per_sec": 0.0,
+                "line_coverage": None,
+                "branch_coverage": None,
+                "arc_coverage": 0,
+            }
+
+        return {
+            "executions": int(row["executions"]),
+            "corpus_size": int(row["corpus_size"]),
+            "unique_crashes": int(row["unique_crashes"]),
+            "executions_per_sec": float(row["executions_per_sec"]),
+            "line_coverage": None,
+            "branch_coverage": None,
+            "arc_coverage": int(row["total_edges"]),
+        }
+
+    def get_crash_site_summary(self, *, limit: int = 10) -> list[dict[str, object]]:
+        rows = self._conn.execute(
+            """
+            SELECT
+                bug_category,
+                exception_type,
+                file,
+                line,
+                SUM(count) AS total_hits,
+                COUNT(*) AS variants
+            FROM crashes
+            GROUP BY bug_category, exception_type, file, line
+            ORDER BY total_hits DESC, variants DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Crashes
     # ------------------------------------------------------------------
