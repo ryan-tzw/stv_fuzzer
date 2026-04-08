@@ -8,7 +8,10 @@ from .string.operations import (
 )
 from .tree.operations import (
     AlternativeSwitch,
+    LargeSubtreeSplice,
     GrammarSubtreeReplace,
+    MultiGrammarSubtreeReplace,
+    RecursiveGrammarMutate,
     SubtreeDelete,
     SubtreeDuplicate,
     TerminalMutate,
@@ -33,7 +36,10 @@ __all__ = [
     "InsertRandomChar",
     "DuplicateChar",
     "AlternativeSwitch",
+    "LargeSubtreeSplice",
     "GrammarSubtreeReplace",
+    "MultiGrammarSubtreeReplace",
+    "RecursiveGrammarMutate",
     "SubtreeDelete",
     "SubtreeDuplicate",
     "TerminalMutate",

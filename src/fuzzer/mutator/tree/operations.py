@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from fuzzer.grammar.coverage import GrammarCoverage
 from fuzzer.grammar.fragments import FragmentPool
 from fuzzer.grammar.generator import generate_from_grammar
 from fuzzer.grammar.loader import load_parser
@@ -12,16 +13,22 @@ from fuzzer.grammar.parser import parse_input
 from fuzzer.grammar.serializer import serialize_tree
 from fuzzer.grammar.tree import Node
 from fuzzer.mutator.base import MutationOperation
-from fuzzer.mutator.tree.grammar_mutator import GrammarMutator
+from fuzzer.mutator.tree.grammar_mutator import (
+    GrammarMutator,
+    AdaptiveGrammarMutationConfig,
+)
 
 
 class GrammarSubtreeReplace(MutationOperation):
     """Mutate text by parsing to a Node tree and replacing one subtree."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4"):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
         self._mutator = GrammarMutator()
 
     def mutate(self, data: str) -> str:
@@ -30,7 +37,44 @@ class GrammarSubtreeReplace(MutationOperation):
             if not parsed.success or parsed.tree is None:
                 return data
 
+            self._coverage.update_from_tree(parsed.tree)
             self._pool.add_tree(parsed.tree)
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
+
+
+class MultiGrammarSubtreeReplace(MutationOperation):
+    """Aggressive multi-point grammar mutation .
+    Performs 2-4 subtree replacements in a single mutation for much stronger exploration."""
+
+    kind = "tree"
+
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        config: AdaptiveGrammarMutationConfig | None = None,
+    ):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
             mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
             if mutated is None:
                 return data
@@ -42,6 +86,8 @@ class GrammarSubtreeReplace(MutationOperation):
 
 class TerminalMutate(MutationOperation):
     """Mutate one terminal leaf text in a parsed Node tree."""
+
+    kind = "tree"
 
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
@@ -74,6 +120,8 @@ class TerminalMutate(MutationOperation):
 class SubtreeDelete(MutationOperation):
     """Delete one compatible subtree from a repeated structure."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -100,6 +148,8 @@ class SubtreeDelete(MutationOperation):
 class SubtreeDuplicate(MutationOperation):
     """Duplicate one compatible subtree from a repeated structure."""
 
+    kind = "tree"
+
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
@@ -125,6 +175,8 @@ class SubtreeDuplicate(MutationOperation):
 
 class AlternativeSwitch(MutationOperation):
     """Switch a nonterminal subtree to a different grammar alternative."""
+
+    kind = "tree"
 
     def __init__(self, grammar_name: str = "ipv4", rng: random.Random | None = None):
         self.grammar_name = grammar_name
@@ -227,6 +279,76 @@ class AlternativeSwitch(MutationOperation):
                 return _clone_node(node)
 
         return None
+
+
+class LargeSubtreeSplice(MutationOperation):
+    """Large-scale cross-input subtree splice. Uses the shared pool."""
+
+    kind = "tree"
+
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        config: AdaptiveGrammarMutationConfig | None = None,
+    ):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
+
+
+class RecursiveGrammarMutate(MutationOperation):
+    """Recursive multi-mutation with probability."""
+
+    kind = "tree"
+
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        config: AdaptiveGrammarMutationConfig | None = None,
+    ):
+        self.grammar_name = grammar_name
+        self._parser = load_parser(self.grammar_name)
+        self._pool = FragmentPool()
+        self._coverage = GrammarCoverage()
+        self._config = config or AdaptiveGrammarMutationConfig()
+        self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
+
+    def mutate(self, data: str) -> str:
+        try:
+            parsed = parse_input(self._parser, data)
+            if not parsed.success or parsed.tree is None:
+                return data
+
+            self._coverage.update_from_tree(parsed.tree)
+            self._pool.add_tree(parsed.tree)
+
+            mutated = self._mutator.mutate_tree(parsed.tree, self._pool)
+            if mutated is None:
+                return data
+
+            return serialize_tree(mutated)
+        except Exception:
+            return data
 
 
 @dataclass(frozen=True)

@@ -27,14 +27,26 @@ class Mutator(BaseMutator):
             DuplicateChar(),
         )
 
-    def mutate(self, data: str) -> str:
+    def mutate(self, data: str) -> tuple[str, list[MutationOperation]]:
         """Apply the strategy's selected operations to the input and return the result."""
+        operations = self.strategy.select()
         original = data
-        for operation in self.strategy.select():
+        for operation in operations:
             data = operation.mutate(data)
         if data != original:
-            return data
-        return self._mutate_as_string(original)
+            return data, operations
+
+        fallback_mutated = self._mutate_as_string(original)
+        if fallback_mutated != original:
+            return fallback_mutated, []
+        return original, operations
+
+    def update_weights(
+        self, operations: list[MutationOperation], reward: float = 0.0
+    ) -> None:
+        """Delegate weight updates to the internal strategy."""
+        for op in operations:
+            self.strategy.update_weight(op, reward)
 
     def _mutate_as_string(self, data: str) -> str:
         operations = list(self._string_fallback_ops)
