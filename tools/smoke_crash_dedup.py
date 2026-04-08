@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 def _make_parsed_crash(
     *,
     message: str,
