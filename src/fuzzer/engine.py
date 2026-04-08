@@ -182,6 +182,7 @@ class FuzzingEngine:
                 arc_coverage=arc_coverage,
             )
 
+            run_error: BaseException | None = None
             try:
                 self.start()
                 while True:
@@ -240,9 +241,19 @@ class FuzzingEngine:
 
             except KeyboardInterrupt:
                 self.logger.log_stop_reason("interrupted by user")
+            except BaseException as exc:
+                run_error = exc
 
             finally:
-                self.stop()
+                try:
+                    self.stop()
+                except BaseException as stop_exc:
+                    if run_error is None:
+                        raise
+                    run_error.add_note(f"engine stop cleanup also failed: {stop_exc!r}")
+
+            if run_error is not None:
+                raise run_error
 
         elapsed = time.monotonic() - start_time
         self.logger.print_summary(executions=executions, cycles=cycles, elapsed=elapsed)
