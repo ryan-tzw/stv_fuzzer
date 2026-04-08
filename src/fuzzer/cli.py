@@ -91,6 +91,15 @@ def main() -> int:
         default=None,
         help="Static argument passed to blackbox binary (repeatable)",
     )
+    parser.add_argument(
+        "--blackbox-timeout",
+        type=float,
+        default=None,
+        help=(
+            "Timeout in seconds for blackbox binary execution "
+            f"(-1 to disable, default: {FuzzerConfig.blackbox_timeout})"
+        ),
+    )
 
     # Output
     parser.add_argument(
@@ -183,6 +192,7 @@ def main() -> int:
             or args.blackbox_binary is not None
             or args.blackbox_input_flag is not None
             or args.blackbox_arg is not None
+            or args.blackbox_timeout is not None
         ):
             parser.error(
                 "target-specific overrides are not supported with --profiles; "
@@ -208,6 +218,9 @@ def main() -> int:
                     ),
                     blackbox_args=tuple(
                         base.get("blackbox_args", FuzzerConfig.blackbox_args)
+                    ),
+                    blackbox_timeout=base.get(
+                        "blackbox_timeout", FuzzerConfig.blackbox_timeout
                     ),
                     runs_dir=(
                         args.runs_dir
@@ -294,6 +307,11 @@ def main() -> int:
             tuple(args.blackbox_arg)
             if args.blackbox_arg is not None
             else tuple(base.get("blackbox_args", FuzzerConfig.blackbox_args))
+        ),
+        blackbox_timeout=(
+            args.blackbox_timeout
+            if args.blackbox_timeout is not None
+            else base.get("blackbox_timeout", FuzzerConfig.blackbox_timeout)
         ),
         runs_dir=(
             args.runs_dir

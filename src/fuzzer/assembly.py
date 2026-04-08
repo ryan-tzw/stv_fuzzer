@@ -49,6 +49,7 @@ def build_engine_components(config: FuzzerConfig) -> EngineComponents:
                     binary_path=config.blackbox_binary,
                     input_flag=config.blackbox_input_flag,
                     static_args=list(config.blackbox_args),
+                    timeout=config.blackbox_timeout,
                 ),
                 whitebox=PersistentCoverageExecutor(
                     config.project_dir,

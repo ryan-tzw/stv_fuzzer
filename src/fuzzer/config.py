@@ -88,6 +88,7 @@ class FuzzerConfig:
     blackbox_binary: Path | None = None
     blackbox_input_flag: str = "--ipstr"
     blackbox_args: tuple[str, ...] = ()
+    blackbox_timeout: float | None = 3.0
     diff_use_whitebox_coverage: bool = True
     diff_use_blackbox_nonzero_exit: bool = False
     diff_use_blackbox_traceback: bool = False
@@ -127,6 +128,9 @@ class FuzzerConfig:
             self.blackbox_binary = Path(self.blackbox_binary).resolve()
         self.harness_args = tuple(self.harness_args)
         self.blackbox_args = tuple(self.blackbox_args)
+        self.blackbox_timeout = self._normalise_timeout(
+            self.blackbox_timeout, "blackbox_timeout"
+        )
         self.max_cycles = self._normalise_limit(self.max_cycles, "max_cycles")
         self.time_limit = self._normalise_limit(self.time_limit, "time_limit")
         self._validate_paths()
@@ -162,4 +166,13 @@ class FuzzerConfig:
             return None
         if value < 0:
             raise ValueError(f"{name} must be >= 0, -1, or None")
+        return value
+
+    @staticmethod
+    def _normalise_timeout(value: float | None, name: str) -> float | None:
+        """Normalise optional timeout values; accept -1 to disable."""
+        if value is None or value == -1:
+            return None
+        if value <= 0:
+            raise ValueError(f"{name} must be > 0, -1, or None")
         return value
