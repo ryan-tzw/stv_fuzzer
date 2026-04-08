@@ -2,12 +2,13 @@
 SQLite-backed storage for corpus seeds and crash reports.
 """
 
-import sqlite3
 import re
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fuzzer.corpus import SeedInput, SeedMetadata
+from fuzzer.metrics import MetricsSnapshot
 from fuzzer.observers.input import ParsedCrash
 
 
@@ -81,6 +82,18 @@ class FuzzerDatabase:
                 count               INTEGER NOT NULL DEFAULT 1,
                 first_seen_at       TEXT    NOT NULL,
                 last_seen_at        TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS fuzzer_metrics (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp             TEXT     NOT NULL,
+                corpus_size           INTEGER  NOT NULL,
+                interesting_seed      INTEGER  NOT NULL,
+                unique_crashes        INTEGER  NOT NULL,
+                total_crashes         INTEGER  NOT NULL,
+                total_edges           INTEGER  NOT NULL,
+                executions            INTEGER  NOT NULL,
+                executions_per_sec    REAL     NOT NULL
             );
         """)
         self._migrate_crash_schema()
@@ -171,6 +184,71 @@ class FuzzerDatabase:
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Metrics
+    # ------------------------------------------------------------------
+
+    def record_metrics(self, metrics: MetricsSnapshot) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO fuzzer_metrics (timestamp, corpus_size, interesting_seed, unique_crashes, total_crashes, total_edges, executions, executions_per_sec)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.timestamp,
+                metrics.corpus_size,
+                metrics.interesting_seed,
+                metrics.unique_crashes,
+                metrics.total_crashes,
+                metrics.total_edges,
+                metrics.executions,
+                metrics.execs_per_sec,
+            ),
+        )
+        self._conn.commit()
+
+    def get_last_metrics(self) -> dict:
+        cursor = self._conn.execute(
+            "SELECT * FROM fuzzer_metrics ORDER BY timestamp DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            return {}
+
+        columns = [col[0] for col in cursor.description]
+        return dict(zip(columns, row))
+
+    def get_coverage_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, total_edges FROM fuzzer_metrics ORDER BY timestamp"
+        )
+
+        if rows is None:
+            return []
+
+        return [(ts, edges) for ts, edges in rows]
+
+    def get_unique_bugs_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, unique_crashes FROM fuzzer_metrics ORDER BY timestamp"
+        )
+
+        if rows is None:
+            return []
+
+        return [(ts, uniq) for ts, uniq in rows]
+
+    def get_interesting_data(self) -> list[tuple[str, int]]:
+        rows = self._conn.execute(
+            "SELECT timestamp, interesting_seed FROM fuzzer_metrics ORDER BY timestamp"
+        )
+
+        if rows is None:
+            return []
+
+        return [(ts, seed) for ts, seed in rows]
 
     # ------------------------------------------------------------------
     # Crashes
