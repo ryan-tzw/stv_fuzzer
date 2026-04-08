@@ -55,7 +55,7 @@ class CorpusManager:
         self._merge_loaded_duplicates()
 
         if not self._seeds:
-            generated = self._generate_initial_seeds(count=10)
+            generated = self._generate_initial_seeds(count=1)
             for data in generated:
                 self._add_seed(data, persist=True)
 
