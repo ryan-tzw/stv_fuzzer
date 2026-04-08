@@ -53,3 +53,7 @@ class DifferentialFeedback:
             return True
 
         return False
+
+    def on_cycle_start(self, cycle: int) -> None:
+        """Forward cycle boundary notification to internal coverage feedback."""
+        self._coverage_feedback.on_cycle_start(cycle)

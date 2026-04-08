@@ -77,6 +77,12 @@ class FuzzingEngine:
                 return f"reached time limit ({time_limit}s)"
         return None
 
+    def _notify_feedback_cycle_start(self, cycle: int) -> None:
+        """Notify feedback of cycle boundary when supported."""
+        hook = getattr(self.feedback, "on_cycle_start", None)
+        if callable(hook):
+            hook(cycle)
+
     def _coverage_counts(self) -> tuple[int, int, int]:
         """Return cumulative unique line/branch/arc counts from active feedback."""
         line_coverage = getattr(self.feedback, "total_seen_lines", 0)
@@ -173,6 +179,7 @@ class FuzzingEngine:
                         break
 
                     active_cycle = cycles + 1
+                    self._notify_feedback_cycle_start(active_cycle)
                     seed_index = 0
                     while seed_index < self.corpus.size():
                         stop_reason = self._time_limit_reason(start_time)
