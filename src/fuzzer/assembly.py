@@ -5,9 +5,10 @@ engine can accept injected dependencies in tests or alternate pipelines.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from fuzzer.config import FuzzerConfig
+from fuzzer.contracts import FeedbackProtocol, ObserverProtocol
 from fuzzer.mutator import BaseMutator, Mutator, build_strategy
 from fuzzer.schedulers import FastScheduler, RandomScheduler, Scheduler
 from fuzzer.executors import (
@@ -26,17 +27,20 @@ from fuzzer.feedback import (
 from fuzzer.observers import DifferentialObserver, InProcessCoverageObserver
 
 
+SignalT = TypeVar("SignalT")
+
+
 @dataclass
-class EngineComponents:
+class EngineComponents(Generic[SignalT]):
     mutator: BaseMutator
     scheduler: Scheduler
     executor: Executor
-    observer: Any
-    feedback: Any
+    observer: ObserverProtocol[SignalT]
+    feedback: FeedbackProtocol[SignalT]
     crash_detector: CrashDetector
 
 
-def build_engine_components(config: FuzzerConfig) -> EngineComponents:
+def build_engine_components(config: FuzzerConfig) -> EngineComponents[Any]:
     if config.mode == "differential":
         if config.blackbox_binary is None:
             raise ValueError("blackbox_binary is required in differential mode")

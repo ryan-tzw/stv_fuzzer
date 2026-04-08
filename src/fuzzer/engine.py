@@ -4,9 +4,15 @@ Fuzzing engine: orchestrates the main fuzzing loop.
 
 import time
 from datetime import datetime
+from typing import Any
 
 from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
+from fuzzer.contracts import (
+    CoverageStatsProvider,
+    CrashSignalProtocol,
+    SupportsCycleStart,
+)
 from fuzzer.corpus import CorpusManager
 from fuzzer.logger import FuzzerLogger
 from fuzzer.observers import ObservationInput
@@ -15,7 +21,7 @@ from fuzzer.storage.database import FuzzerDatabase
 
 class FuzzingEngine:
     def __init__(
-        self, config: FuzzerConfig, components: EngineComponents | None = None
+        self, config: FuzzerConfig, components: EngineComponents[Any] | None = None
     ):
         self.config = config
 
@@ -91,15 +97,17 @@ class FuzzingEngine:
 
     def _notify_feedback_cycle_start(self, cycle: int) -> None:
         """Notify feedback of cycle boundary when supported."""
-        hook = getattr(self.feedback, "on_cycle_start", None)
-        if callable(hook):
-            hook(cycle)
+        if isinstance(self.feedback, SupportsCycleStart):
+            self.feedback.on_cycle_start(cycle)
 
     def _coverage_counts(self) -> tuple[int, int, int]:
         """Return cumulative unique line/branch/arc counts from active feedback."""
-        line_coverage = getattr(self.feedback, "total_seen_lines", 0)
-        branch_coverage = getattr(self.feedback, "total_seen_branches", 0)
-        arc_coverage = getattr(self.feedback, "total_seen_arcs", 0)
+        if not isinstance(self.feedback, CoverageStatsProvider):
+            return 0, 0, 0
+
+        line_coverage = self.feedback.total_seen_lines
+        branch_coverage = self.feedback.total_seen_branches
+        arc_coverage = self.feedback.total_seen_arcs
         return (
             line_coverage if isinstance(line_coverage, int) else 0,
             branch_coverage if isinstance(branch_coverage, int) else 0,
@@ -135,7 +143,9 @@ class FuzzingEngine:
 
         execution_id = executions + 1
         if is_crash:
-            parsed_crash = getattr(signal, "parsed_crash", None)
+            parsed_crash = (
+                signal.parsed_crash if isinstance(signal, CrashSignalProtocol) else None
+            )
             if parsed_crash is None:
                 self.logger.log_stop_reason(
                     "warning: crash detected but observer produced no parsed crash"
