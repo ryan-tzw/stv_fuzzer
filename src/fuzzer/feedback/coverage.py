@@ -29,7 +29,7 @@ class CoverageFeedback:
         self._max_fallback_accepts_per_cycle = 1
 
         self._seen_lines: set[tuple[str, int]] = set()
-        self._seen_branches: set[ArcKey] = set()
+        self._seen_arcs: set[ArcKey] = set()
 
         self._arc_doc_freq: dict[ArcKey, int] = {}
         self._corpus_docs = 0
@@ -80,7 +80,7 @@ class CoverageFeedback:
 
     def _has_new_arc(self, candidate_arcs: set[ArcKey]) -> bool:
         """Return True if candidate contains any arcs not seen before."""
-        return any(arc not in self._seen_branches for arc in candidate_arcs)
+        return any(arc not in self._seen_arcs for arc in candidate_arcs)
 
     def _fallback_score(self, candidate_arcs: set[ArcKey]) -> float:
         if not candidate_arcs:
@@ -131,7 +131,7 @@ class CoverageFeedback:
                 self._seen_lines.add((file, line))
         for file, branches in signal.branches.items():
             for branch in branches:
-                self._seen_branches.add((file, branch))
+                self._seen_arcs.add((file, branch))
 
     def _record_accepted_candidate(self, candidate_arcs: set[ArcKey]) -> None:
         """Record one accepted input's arc presence into corpus-level frequencies."""
@@ -147,9 +147,9 @@ class CoverageFeedback:
     @property
     def total_seen_branches(self) -> int:
         """Return total unique covered branches observed globally."""
-        return len(self._seen_branches)
+        return len(self._seen_arcs)
 
     @property
     def total_seen_arcs(self) -> int:
         """Return total unique covered arcs observed globally."""
-        return len(self._seen_branches)
+        return len(self._seen_arcs)
