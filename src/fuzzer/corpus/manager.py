@@ -3,6 +3,7 @@ Corpus manager: loads seed inputs, tracks metadata, and persists via the databas
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +12,8 @@ from fuzzer.grammar.generator import generate_from_grammar
 
 if TYPE_CHECKING:
     from fuzzer.storage.database import FuzzerDatabase
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,9 +56,14 @@ class CorpusManager:
         self._seeds = self._db.load_seeds()
         self._rebuild_index()
         self._merge_loaded_duplicates()
+        generation_error: Exception | None = None
 
         if not self._seeds:
-            generated = self._generate_initial_seeds(count=1)
+            try:
+                generated = self._generate_initial_seeds(count=1)
+            except Exception as exc:
+                generation_error = exc
+                generated = []
             for data in generated:
                 self._add_seed(data, persist=True)
 
@@ -65,21 +73,29 @@ class CorpusManager:
                 if path.is_file():
                     for data in self._load_seed_file(path):
                         self._add_seed(data, persist=True)
+            if self._seeds and generation_error is not None:
+                logger.warning(
+                    "Initial seed generation failed for grammar %r; using corpus files "
+                    "fallback from %s. Error: %r",
+                    self.grammar_name,
+                    self.corpus_dir,
+                    generation_error,
+                )
 
         if not self._seeds:
-            raise ValueError(
+            error = ValueError(
                 "No initial seeds available. "
                 f"Grammar generation failed for {self.grammar_name!r}, "
                 f"and no seed files were found in corpus directory: {self.corpus_dir}"
             )
+            if generation_error is not None:
+                raise error from generation_error
+            raise error
 
     def _generate_initial_seeds(self, count: int) -> list[str]:
         generated: list[str] = []
-        try:
-            for _ in range(count):
-                generated.append(generate_from_grammar(self.grammar_name, max_depth=8))
-        except Exception:
-            return []
+        for _ in range(count):
+            generated.append(generate_from_grammar(self.grammar_name, max_depth=8))
         return generated
 
     def _add_seed(self, data: str, *, persist: bool) -> SeedInput:
