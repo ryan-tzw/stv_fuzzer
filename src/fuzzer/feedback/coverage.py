@@ -5,10 +5,22 @@ and decides whether an input should be added to the corpus.
 
 import math
 from collections import deque
+from dataclasses import dataclass
 
 from fuzzer.observers.python_coverage import CoverageData
 
 ArcKey = tuple[str, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class RareArcFallbackPolicy:
+    top_k: int = 8
+    warmup_docs: int = 32
+    min_candidate_arcs: int = 4
+    min_rare_hits: int = 2
+    rare_fraction: float = 0.05
+    fallback_percentile: float = 95.0
+    max_fallback_accepts_per_cycle: int = 1
 
 
 class CoverageFeedback:
@@ -20,13 +32,7 @@ class CoverageFeedback:
     """
 
     def __init__(self) -> None:
-        self._top_k = 8
-        self._warmup_docs = 32
-        self._min_candidate_arcs = 4
-        self._min_rare_hits = 2
-        self._rare_fraction = 0.05
-        self._fallback_percentile = 95.0
-        self._max_fallback_accepts_per_cycle = 1
+        self._policy = RareArcFallbackPolicy()
 
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_arcs: set[ArcKey] = set()
@@ -91,28 +97,33 @@ class CoverageFeedback:
             math.log((docs + 1.0) / (self._arc_doc_freq.get(arc, 0) + 1.0))
             for arc in candidate_arcs
         ]
-        top_weights = sorted(weights, reverse=True)[: self._top_k]
+        top_weights = sorted(weights, reverse=True)[: self._policy.top_k]
         return sum(top_weights) / math.sqrt(len(candidate_arcs))
 
     def _should_accept_fallback(
         self, candidate_arcs: set[ArcKey], fallback_score: float
     ) -> bool:
         docs = self._corpus_docs
-        if docs < self._warmup_docs:
+        if docs < self._policy.warmup_docs:
             return False
-        if len(candidate_arcs) < self._min_candidate_arcs:
+        if len(candidate_arcs) < self._policy.min_candidate_arcs:
             return False
-        if self._fallback_accepts_this_cycle >= self._max_fallback_accepts_per_cycle:
+        if (
+            self._fallback_accepts_this_cycle
+            >= self._policy.max_fallback_accepts_per_cycle
+        ):
             return False
 
-        rare_cutoff = max(2, int(math.floor(self._rare_fraction * docs)))
+        rare_cutoff = max(2, int(math.floor(self._policy.rare_fraction * docs)))
         rare_hits = sum(
             1 for arc in candidate_arcs if self._arc_doc_freq.get(arc, 0) <= rare_cutoff
         )
-        if rare_hits < self._min_rare_hits:
+        if rare_hits < self._policy.min_rare_hits:
             return False
 
-        threshold = self._percentile(self._fallback_scores, self._fallback_percentile)
+        threshold = self._percentile(
+            self._fallback_scores, self._policy.fallback_percentile
+        )
         return fallback_score >= threshold
 
     @staticmethod
