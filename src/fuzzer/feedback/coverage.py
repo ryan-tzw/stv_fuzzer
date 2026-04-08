@@ -53,18 +53,10 @@ class CoverageFeedback:
             - a fallback-accepted rare-arc profile.
         """
         candidate_arcs = self._candidate_arcs(signal)
-        if self._has_new_arc(candidate_arcs):
-            self._update_seen(signal)
-            self._record_accepted_candidate(candidate_arcs)
+        if self._try_accept_new_arc(signal, candidate_arcs):
             return True
 
-        fallback_score = self._fallback_score(candidate_arcs)
-        accept_fallback = self._should_accept_fallback(candidate_arcs, fallback_score)
-        self._fallback_scores.append(fallback_score)
-        if accept_fallback:
-            self._update_seen(signal)
-            self._record_accepted_candidate(candidate_arcs)
-            self._fallback_accepts_this_cycle += 1
+        if self._try_accept_fallback(signal, candidate_arcs):
             return True
 
         return False
@@ -87,6 +79,37 @@ class CoverageFeedback:
     def _has_new_arc(self, candidate_arcs: set[ArcKey]) -> bool:
         """Return True if candidate contains any arcs not seen before."""
         return any(arc not in self._seen_arcs for arc in candidate_arcs)
+
+    def _try_accept_new_arc(
+        self, signal: CoverageData, candidate_arcs: set[ArcKey]
+    ) -> bool:
+        if not self._has_new_arc(candidate_arcs):
+            return False
+        self._accept_candidate(signal, candidate_arcs)
+        return True
+
+    def _try_accept_fallback(
+        self, signal: CoverageData, candidate_arcs: set[ArcKey]
+    ) -> bool:
+        fallback_score = self._fallback_score(candidate_arcs)
+        accept_fallback = self._should_accept_fallback(candidate_arcs, fallback_score)
+        self._fallback_scores.append(fallback_score)
+        if not accept_fallback:
+            return False
+        self._accept_candidate(signal, candidate_arcs, via_fallback=True)
+        return True
+
+    def _accept_candidate(
+        self,
+        signal: CoverageData,
+        candidate_arcs: set[ArcKey],
+        *,
+        via_fallback: bool = False,
+    ) -> None:
+        self._update_seen(signal)
+        self._record_accepted_candidate(candidate_arcs)
+        if via_fallback:
+            self._fallback_accepts_this_cycle += 1
 
     def _fallback_score(self, candidate_arcs: set[ArcKey]) -> float:
         if not candidate_arcs:
