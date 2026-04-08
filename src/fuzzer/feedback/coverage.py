@@ -3,24 +3,10 @@ Coverage feedback: takes normalised coverage signals from the observer
 and decides whether an input should be added to the corpus.
 """
 
-import math
 from collections import deque
-from dataclasses import dataclass
 
+from fuzzer.feedback.rare_arc import ArcKey, RareArcFallback
 from fuzzer.observers.python_coverage import CoverageData
-
-ArcKey = tuple[str, tuple[int, int]]
-
-
-@dataclass(frozen=True)
-class RareArcFallbackPolicy:
-    top_k: int = 8
-    warmup_docs: int = 32
-    min_candidate_arcs: int = 4
-    min_rare_hits: int = 2
-    rare_fraction: float = 0.05
-    fallback_percentile: float = 95.0
-    max_fallback_accepts_per_cycle: int = 1
 
 
 class CoverageFeedback:
@@ -32,7 +18,7 @@ class CoverageFeedback:
     """
 
     def __init__(self) -> None:
-        self._policy = RareArcFallbackPolicy()
+        self._rare_arc = RareArcFallback()
 
         self._seen_lines: set[tuple[str, int]] = set()
         self._seen_arcs: set[ArcKey] = set()
@@ -92,8 +78,17 @@ class CoverageFeedback:
     def _try_accept_fallback(
         self, signal: CoverageData, candidate_arcs: set[ArcKey]
     ) -> bool:
-        fallback_score = self._fallback_score(candidate_arcs)
-        accept_fallback = self._should_accept_fallback(candidate_arcs, fallback_score)
+        fallback_score = self._rare_arc.score(
+            candidate_arcs, docs=self._corpus_docs, arc_doc_freq=self._arc_doc_freq
+        )
+        accept_fallback = self._rare_arc.should_accept(
+            candidate_arcs,
+            fallback_score=fallback_score,
+            docs=self._corpus_docs,
+            arc_doc_freq=self._arc_doc_freq,
+            recent_scores=self._fallback_scores,
+            fallback_accepts_this_cycle=self._fallback_accepts_this_cycle,
+        )
         self._fallback_scores.append(fallback_score)
         if not accept_fallback:
             return False
@@ -111,66 +106,6 @@ class CoverageFeedback:
         self._record_accepted_candidate(candidate_arcs)
         if via_fallback:
             self._fallback_accepts_this_cycle += 1
-
-    def _fallback_score(self, candidate_arcs: set[ArcKey]) -> float:
-        if not candidate_arcs:
-            return 0.0
-
-        docs = self._corpus_docs
-        weights = [
-            math.log((docs + 1.0) / (self._arc_doc_freq.get(arc, 0) + 1.0))
-            for arc in candidate_arcs
-        ]
-        top_weights = sorted(weights, reverse=True)[: self._policy.top_k]
-        return sum(top_weights) / math.sqrt(len(candidate_arcs))
-
-    def _should_accept_fallback(
-        self, candidate_arcs: set[ArcKey], fallback_score: float
-    ) -> bool:
-        docs = self._corpus_docs
-        if not self._passes_fallback_prerequisites(candidate_arcs, docs):
-            return False
-
-        if self._rare_hits(candidate_arcs, docs) < self._policy.min_rare_hits:
-            return False
-
-        threshold = self._fallback_score_threshold()
-        return fallback_score >= threshold
-
-    def _passes_fallback_prerequisites(
-        self, candidate_arcs: set[ArcKey], docs: int
-    ) -> bool:
-        if docs < self._policy.warmup_docs:
-            return False
-        if len(candidate_arcs) < self._policy.min_candidate_arcs:
-            return False
-        if (
-            self._fallback_accepts_this_cycle
-            >= self._policy.max_fallback_accepts_per_cycle
-        ):
-            return False
-        return True
-
-    def _rare_cutoff(self, docs: int) -> int:
-        return max(2, int(math.floor(self._policy.rare_fraction * docs)))
-
-    def _rare_hits(self, candidate_arcs: set[ArcKey], docs: int) -> int:
-        rare_cutoff = self._rare_cutoff(docs)
-        return sum(
-            1 for arc in candidate_arcs if self._arc_doc_freq.get(arc, 0) <= rare_cutoff
-        )
-
-    def _fallback_score_threshold(self) -> float:
-        return self._percentile(self._fallback_scores, self._policy.fallback_percentile)
-
-    @staticmethod
-    def _percentile(values: deque[float], percentile: float) -> float:
-        if not values:
-            return float("inf")
-        sorted_vals = sorted(values)
-        rank = int(math.ceil((percentile / 100.0) * len(sorted_vals))) - 1
-        rank = max(0, min(rank, len(sorted_vals) - 1))
-        return sorted_vals[rank]
 
     def _update_seen(self, signal: CoverageData) -> None:
         """Absorb all coverage in signal into the global seen sets."""
