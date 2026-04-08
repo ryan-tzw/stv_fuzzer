@@ -8,6 +8,8 @@ class MetricsSnapshot:
     interesting_seed: int
     unique_crashes: int
     total_crashes: int
+    line_coverage: int
+    branch_coverage: int
     total_edges: int
     executions: int
     execs_per_sec: float

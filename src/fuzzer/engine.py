@@ -266,6 +266,8 @@ class FuzzingEngine:
                     interesting_seed=interesting_seed,
                     unique_crashes=unique_crashes,
                     total_crashes=total_crashes,
+                    line_coverage=line_coverage,
+                    branch_coverage=branch_coverage,
                     total_edges=arc_coverage,
                     executions=executions,
                 )
@@ -324,6 +326,8 @@ class FuzzingEngine:
                                 interesting_seed=interesting_seed,
                                 unique_crashes=unique_crashes,
                                 total_crashes=total_crashes,
+                                line_coverage=line_coverage,
+                                branch_coverage=branch_coverage,
                                 total_edges=arc_coverage,
                                 executions=executions,
                             )
@@ -357,6 +361,8 @@ class FuzzingEngine:
                     interesting_seed=interesting_seed,
                     unique_crashes=unique_crashes,
                     total_crashes=total_crashes,
+                    line_coverage=line_coverage,
+                    branch_coverage=branch_coverage,
                     total_edges=arc_coverage,
                     executions=executions,
                 )

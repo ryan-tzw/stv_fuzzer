@@ -91,6 +91,8 @@ class FuzzerDatabase:
                 interesting_seed      INTEGER  NOT NULL,
                 unique_crashes        INTEGER  NOT NULL,
                 total_crashes         INTEGER  NOT NULL,
+                line_coverage         INTEGER  NOT NULL DEFAULT 0,
+                branch_coverage       INTEGER  NOT NULL DEFAULT 0,
                 total_edges           INTEGER  NOT NULL,
                 executions            INTEGER  NOT NULL,
                 executions_per_sec    REAL     NOT NULL
@@ -192,8 +194,19 @@ class FuzzerDatabase:
     def record_metrics(self, metrics: MetricsSnapshot) -> None:
         self._conn.execute(
             """
-            INSERT INTO fuzzer_metrics (timestamp, corpus_size, interesting_seed, unique_crashes, total_crashes, total_edges, executions, executions_per_sec)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO fuzzer_metrics (
+                timestamp,
+                corpus_size,
+                interesting_seed,
+                unique_crashes,
+                total_crashes,
+                line_coverage,
+                branch_coverage,
+                total_edges,
+                executions,
+                executions_per_sec
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metrics.timestamp,
@@ -201,6 +214,8 @@ class FuzzerDatabase:
                 metrics.interesting_seed,
                 metrics.unique_crashes,
                 metrics.total_crashes,
+                metrics.line_coverage,
+                metrics.branch_coverage,
                 metrics.total_edges,
                 metrics.executions,
                 metrics.execs_per_sec,
@@ -249,6 +264,8 @@ class FuzzerDatabase:
                 executions,
                 corpus_size,
                 unique_crashes,
+                line_coverage,
+                branch_coverage,
                 total_edges,
                 executions_per_sec
             FROM fuzzer_metrics
@@ -262,8 +279,8 @@ class FuzzerDatabase:
                 "corpus_size": self.get_corpus_size(),
                 "unique_crashes": 0,
                 "executions_per_sec": 0.0,
-                "line_coverage": None,
-                "branch_coverage": None,
+                "line_coverage": 0,
+                "branch_coverage": 0,
                 "arc_coverage": 0,
             }
 
@@ -272,8 +289,8 @@ class FuzzerDatabase:
             "corpus_size": int(row["corpus_size"]),
             "unique_crashes": int(row["unique_crashes"]),
             "executions_per_sec": float(row["executions_per_sec"]),
-            "line_coverage": None,
-            "branch_coverage": None,
+            "line_coverage": int(row["line_coverage"]),
+            "branch_coverage": int(row["branch_coverage"]),
             "arc_coverage": int(row["total_edges"]),
         }
 
