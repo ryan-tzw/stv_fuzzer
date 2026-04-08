@@ -41,20 +41,32 @@ class FuzzingEngine:
 
     def start(self) -> None:
         """Prepare engine resources, such as persistent executor startup."""
-        try:
-            self.executor.start()
-        except AttributeError:
-            pass
+        self.executor.start()
 
     def stop(self) -> None:
         """Clean up resources and persist current corpus state."""
+        stop_error: BaseException | None = None
+        flush_error: BaseException | None = None
         try:
             self.executor.stop()
-        except AttributeError:
-            pass
+        except BaseException as exc:
+            stop_error = exc
 
-        self.db.flush_corpus(self.corpus.seeds())
-        self.db.close()
+        try:
+            self.db.flush_corpus(self.corpus.seeds())
+        except BaseException as exc:
+            flush_error = exc
+        finally:
+            self.db.close()
+
+        if stop_error is not None:
+            if flush_error is not None:
+                stop_error.add_note(
+                    f"database flush also failed during stop cleanup: {flush_error!r}"
+                )
+            raise stop_error
+        if flush_error is not None:
+            raise flush_error
 
     def __enter__(self) -> "FuzzingEngine":
         self.start()
