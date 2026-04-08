@@ -267,9 +267,15 @@ def _parse_worker_status(status_path: Path, log_path: Path) -> dict[str, str]:
 def _tail_text(path: Path, max_bytes: int = 24000) -> str:
     if not path.exists():
         return ""
-    data = path.read_bytes()
-    if len(data) > max_bytes:
-        data = data[-max_bytes:]
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            file_size = handle.tell()
+            start = max(0, file_size - max_bytes)
+            handle.seek(start)
+            data = handle.read(max_bytes)
+    except OSError:
+        return ""
     return data.decode("utf-8", errors="replace")
 
 
