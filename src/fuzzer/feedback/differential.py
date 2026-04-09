@@ -1,6 +1,7 @@
 """Feedback policy for differential fuzzing signals."""
 
 from fuzzer.feedback.coverage import CoverageFeedback
+from fuzzer.observers.bug_category import is_non_actionable_runner_crash
 from fuzzer.observers.differential import DifferentialSignal
 
 
@@ -36,6 +37,12 @@ class DifferentialFeedback:
             signal.whitebox_coverage
         ):
             return True
+
+        non_actionable = is_non_actionable_runner_crash(signal.parsed_crash)
+        if non_actionable:
+            if self.use_whitebox_nonzero_exit and signal.whitebox_nonzero_exit:
+                return True
+            return False
 
         if self.use_blackbox_nonzero_exit and signal.blackbox_nonzero_exit:
             return True

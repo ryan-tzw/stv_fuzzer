@@ -92,6 +92,17 @@ def parse_crash(stderr: str) -> ParsedCrash:
     )
 
 
+def is_non_actionable_runner_crash(parsed: ParsedCrash) -> bool:
+    """Return True when parsed crash metadata reflects runner/tooling noise."""
+    exception_type = parsed.exception_type.strip().lower()
+    file_path = parsed.file.strip().lower().replace("\\", "/")
+    unknown_location = parsed.file.strip().lower() == "unknown" and parsed.line == -1
+    is_pandas_internal = exception_type.startswith("pandas.") or file_path.startswith(
+        "pandas/"
+    )
+    return is_pandas_internal or unknown_location
+
+
 def _extract_final_bug_tuple(text: str) -> ParsedCrash | None:
     match = _FINAL_BUG_COUNT_RE.search(text)
     if match is None:

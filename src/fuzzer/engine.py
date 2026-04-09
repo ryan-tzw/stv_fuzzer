@@ -25,6 +25,7 @@ from fuzzer.metrics import (
     generate_run_report,
 )
 from fuzzer.observers import ObservationInput
+from fuzzer.observers.bug_category import is_non_actionable_runner_crash
 from fuzzer.observers.input import ParsedCrash
 from fuzzer.storage.database import FuzzerDatabase
 
@@ -193,16 +194,7 @@ class FuzzingEngine:
     def _is_non_actionable_differential_crash(self, parsed_crash: ParsedCrash) -> bool:
         if self.config.mode != "differential":
             return False
-
-        exception_type = parsed_crash.exception_type.strip().lower()
-        file_path = parsed_crash.file.strip().lower().replace("\\", "/")
-        unknown_location = parsed_crash.file.strip().lower() == "unknown" and (
-            parsed_crash.line == -1
-        )
-        is_pandas_internal = exception_type.startswith(
-            "pandas."
-        ) or file_path.startswith("pandas/")
-        return is_pandas_internal or unknown_location
+        return is_non_actionable_runner_crash(parsed_crash)
 
     def _append_ignored_differential_crash(
         self,
