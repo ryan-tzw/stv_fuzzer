@@ -94,8 +94,64 @@ class HybridStrategy(MutationStrategy):
         op.weight = max(0.1, min(10.0, op.weight))
 
 
+class GrammarHeavyStrategy(MutationStrategy):
+    """Prefer tree mutations heavily while allowing occasional string ops."""
+
+    def __init__(
+        self,
+        operations: list[MutationOperation],
+        *,
+        tree_probability: float = 0.95,
+    ):
+        if not operations:
+            raise ValueError("GrammarHeavyStrategy requires at least one operation")
+        if not (0.0 <= tree_probability <= 1.0):
+            raise ValueError("tree_probability must be between 0.0 and 1.0")
+
+        self.tree_operations = [op for op in operations if op.kind == "tree"]
+        self.string_operations = [op for op in operations if op.kind == "string"]
+        if not self.tree_operations and not self.string_operations:
+            raise ValueError(
+                "GrammarHeavyStrategy requires tree and/or string operations"
+            )
+
+        self.tree_probability = tree_probability
+
+    @staticmethod
+    def _pick_weighted(operations: list[MutationOperation]) -> MutationOperation:
+        total = sum(op.weight for op in operations)
+        if total <= 0:
+            return random.choice(operations)
+        weights = [op.weight / total for op in operations]
+        return random.choices(operations, weights=weights, k=1)[0]
+
+    def select(self) -> list[MutationOperation]:
+        if not self.tree_operations:
+            return [self._pick_weighted(self.string_operations)]
+        if not self.string_operations:
+            return [self._pick_weighted(self.tree_operations)]
+
+        if random.random() < self.tree_probability:
+            return [self._pick_weighted(self.tree_operations)]
+        return [self._pick_weighted(self.string_operations)]
+
+    def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
+        """Lightweight MOpt-style PSO update."""
+        decay = 0.995
+        eta = 0.08
+        exploration_std = 0.02
+        all_ops = self.tree_operations + self.string_operations
+        for o in all_ops:
+            o.weight *= decay
+        r = math.tanh(reward)
+        op.weight *= math.exp(eta * r)
+        op.weight += random.gauss(0, exploration_std * abs(op.weight))
+        op.weight = max(0.1, min(10.0, op.weight))
+
+
 SELECTOR_FACTORIES: dict[str, Callable[..., MutationStrategy]] = {
     "random_single": RandomSingleStrategy,
     "round_robin": RoundRobinStrategy,
     "hybrid": HybridStrategy,
+    "grammar_heavy": GrammarHeavyStrategy,
 }

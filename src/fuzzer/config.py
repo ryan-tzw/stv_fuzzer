@@ -18,6 +18,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
         "harness": "json-decoder",
         "corpus": "json",
         "mode": "coverage",
+        "mutation_strategy": "grammar_heavy",
     },
     "ipv4_parser": {
         "project_dir": Path("targets/_reference/ipyparse"),
