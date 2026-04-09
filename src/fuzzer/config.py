@@ -88,7 +88,7 @@ class FuzzerConfig:
     blackbox_binary: Path | None = None
     blackbox_input_flag: str = "--ipstr"
     blackbox_args: tuple[str, ...] = ()
-    blackbox_timeout: float | None = 3.0
+    blackbox_timeout: float | None = 15.0
     diff_use_whitebox_coverage: bool = True
     diff_use_blackbox_nonzero_exit: bool = False
     diff_use_blackbox_traceback: bool = False

@@ -35,7 +35,7 @@ class WorkerProcess:
         env: dict[str, str] | None = None,
         cwd: str | None = None,
         max_restarts: int = 5,
-        response_timeout: float | None = 3.0,
+        response_timeout: float | None = 15.0,
     ) -> None:
         self._cmd = cmd
         self._env = env
