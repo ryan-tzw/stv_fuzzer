@@ -22,7 +22,7 @@ class RunRecord:
     profile: str
     repeat: int
     exit_code: int
-    wall_time_s: float
+    runtime_s: float
     run_dir: str
     executions: int
     execs_per_sec: float
@@ -64,7 +64,6 @@ def _read_latest_metrics(db_path: Path) -> dict[str, int | float]:
     if not db_path.is_file():
         return {
             "executions": 0,
-            "executions_per_sec": 0.0,
             "corpus_size": 0,
             "interesting_seed": 0,
             "unique_crashes": 0,
@@ -81,7 +80,6 @@ def _read_latest_metrics(db_path: Path) -> dict[str, int | float]:
             """
             SELECT
                 executions,
-                executions_per_sec,
                 corpus_size,
                 interesting_seed,
                 unique_crashes,
@@ -100,7 +98,6 @@ def _read_latest_metrics(db_path: Path) -> dict[str, int | float]:
     if row is None:
         return {
             "executions": 0,
-            "executions_per_sec": 0.0,
             "corpus_size": 0,
             "interesting_seed": 0,
             "unique_crashes": 0,
@@ -112,7 +109,6 @@ def _read_latest_metrics(db_path: Path) -> dict[str, int | float]:
 
     return {
         "executions": int(row["executions"]),
-        "executions_per_sec": float(row["executions_per_sec"]),
         "corpus_size": int(row["corpus_size"]),
         "interesting_seed": int(row["interesting_seed"]),
         "unique_crashes": int(row["unique_crashes"]),
@@ -141,12 +137,18 @@ def _build_cmd(profile: str, runs_dir: Path, time_limit: int) -> list[str]:
     ]
 
 
+def _compute_execs_per_sec(executions: int, runtime_s: float) -> float:
+    if runtime_s <= 0:
+        return 0.0
+    return executions / runtime_s
+
+
 def _write_csv(path: Path, rows: list[RunRecord]) -> None:
     fieldnames = [
         "profile",
         "repeat",
         "exit_code",
-        "wall_time_s",
+        "runtime_s",
         "run_dir",
         "executions",
         "execs_per_sec",
@@ -168,7 +170,7 @@ def _write_csv(path: Path, rows: list[RunRecord]) -> None:
                     "profile": row.profile,
                     "repeat": row.repeat,
                     "exit_code": row.exit_code,
-                    "wall_time_s": f"{row.wall_time_s:.2f}",
+                    "runtime_s": f"{row.runtime_s:.2f}",
                     "run_dir": row.run_dir,
                     "executions": row.executions,
                     "execs_per_sec": f"{row.execs_per_sec:.2f}",
@@ -271,7 +273,7 @@ def _write_summary(
         "Profile",
         "Repeat",
         "Exit",
-        "Wall(s)",
+        "Runtime(s)",
         "Exec/s",
         "Executions",
         "Corpus",
@@ -284,7 +286,7 @@ def _write_summary(
             row.profile,
             str(row.repeat),
             str(row.exit_code),
-            f"{row.wall_time_s:.1f}",
+            f"{row.runtime_s:.1f}",
             f"{row.execs_per_sec:.2f}",
             str(row.executions),
             str(row.corpus_size),
@@ -373,10 +375,13 @@ def main() -> int:
                     profile=profile,
                     repeat=repeat,
                     exit_code=completed.returncode,
-                    wall_time_s=wall_time,
+                    runtime_s=wall_time,
                     run_dir=str(run_dir) if run_dir is not None else "",
                     executions=int(metrics["executions"]),
-                    execs_per_sec=float(metrics["executions_per_sec"]),
+                    execs_per_sec=_compute_execs_per_sec(
+                        int(metrics["executions"]),
+                        wall_time,
+                    ),
                     corpus_size=int(metrics["corpus_size"]),
                     interesting_seeds=int(metrics["interesting_seed"]),
                     unique_crashes=int(metrics["unique_crashes"]),
