@@ -54,12 +54,22 @@ class BinaryExecutor(Executor):
 
     def run(self, input_data: str | None = None) -> ExecutionResult[Any]:
         """Run binary once with *input_data* passed through ``input_flag``."""
-        cmd = [
-            str(self.binary_path),
-            *self.static_args,
-            self.input_flag,
-            input_data or "",
-        ]
+        input_value = input_data or ""
+        if self.input_flag.startswith("--"):
+            # Use "--flag=value" so leading-hyphen fuzz inputs are parsed as values.
+            input_arg = f"{self.input_flag}={input_value}"
+            cmd = [
+                str(self.binary_path),
+                *self.static_args,
+                input_arg,
+            ]
+        else:
+            cmd = [
+                str(self.binary_path),
+                *self.static_args,
+                self.input_flag,
+                input_value,
+            ]
 
         try:
             completed = subprocess.run(
