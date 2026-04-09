@@ -2,6 +2,7 @@
 Fuzzing engine: orchestrates the main fuzzing loop.
 """
 
+import json
 import time
 import shutil
 from datetime import datetime
@@ -24,6 +25,7 @@ from fuzzer.metrics import (
     generate_run_report,
 )
 from fuzzer.observers import ObservationInput
+from fuzzer.observers.input import ParsedCrash
 from fuzzer.storage.database import FuzzerDatabase
 
 
@@ -181,6 +183,57 @@ class FuzzingEngine:
                     f"warning: failed to remove target logs directory {logs_dir}: {exc!r}"
                 )
 
+    @staticmethod
+    def _truncate_preview(text: str, *, limit: int = 240) -> str:
+        compact = " ".join((text or "").strip().split())
+        if len(compact) <= limit:
+            return compact
+        return compact[:limit] + "..."
+
+    def _is_non_actionable_differential_crash(self, parsed_crash: ParsedCrash) -> bool:
+        if self.config.mode != "differential":
+            return False
+
+        exception_type = parsed_crash.exception_type.strip().lower()
+        file_path = parsed_crash.file.strip().lower().replace("\\", "/")
+        unknown_location = parsed_crash.file.strip().lower() == "unknown" and (
+            parsed_crash.line == -1
+        )
+        is_pandas_internal = exception_type.startswith(
+            "pandas."
+        ) or file_path.startswith("pandas/")
+        return is_pandas_internal or unknown_location
+
+    def _append_ignored_differential_crash(
+        self,
+        *,
+        execution_id: int,
+        cycle: int,
+        exit_code: int,
+        parsed_crash: ParsedCrash,
+    ) -> None:
+        artifact_path = self.run_dir / "report" / "ignored_differential_crashes.jsonl"
+        payload = {
+            "execution_id": execution_id,
+            "cycle": cycle,
+            "exit_code": exit_code,
+            "bug_category": parsed_crash.bug_category,
+            "category_source": parsed_crash.category_source,
+            "exception_type": parsed_crash.exception_type,
+            "file": parsed_crash.file,
+            "line": parsed_crash.line,
+            "message_preview": self._truncate_preview(parsed_crash.exception_message),
+            "traceback_preview": self._truncate_preview(parsed_crash.traceback),
+        }
+        try:
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            with artifact_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        except BaseException as exc:
+            self.logger.log_stop_reason(
+                f"warning: failed to write ignored differential crash artifact: {exc!r}"
+            )
+
     def _execute_once(
         self,
         *,
@@ -210,13 +263,23 @@ class FuzzingEngine:
 
         execution_id = executions + 1
         reward = 0.0
+        counted_crash = False
         if is_crash:
+            counted_crash = True
             parsed_crash = (
                 signal.parsed_crash if isinstance(signal, CrashSignalProtocol) else None
             )
             if parsed_crash is None:
                 self.logger.log_stop_reason(
                     "warning: crash detected but observer produced no parsed crash"
+                )
+            elif self._is_non_actionable_differential_crash(parsed_crash):
+                counted_crash = False
+                self._append_ignored_differential_crash(
+                    execution_id=execution_id,
+                    cycle=cycle,
+                    exit_code=run_result.exit_code,
+                    parsed_crash=parsed_crash,
                 )
             else:
                 is_new = self.db.record_crash(mutated, parsed_crash)
@@ -255,7 +318,7 @@ class FuzzingEngine:
             line_coverage,
             branch_coverage,
             arc_coverage,
-            is_crash,
+            counted_crash,
             added_to_corpus,
         )
 
