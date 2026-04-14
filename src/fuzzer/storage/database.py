@@ -131,7 +131,7 @@ class FuzzerDatabase:
         line = parsed.line
         if parsed.category_source == "final_bug_count":
             return f"{category}|{exc_type}|{file_path}|{line}"
-        if normalized_exc_type == "addrformaterror":
+        if normalized_exc_type in {"addrformaterror", "jsondecodeerror"}:
             return f"{category}|{normalized_exc_type}|{file_path}|{line}"
 
         normalized_message = _canonicalize_exception_message(
