@@ -1,0 +1,55 @@
+?start: ipv4_everything
+      | ipv4_host
+      | ipv4_cidr
+      | ipv4_range_full
+      | ipv4_range_last_octet
+      | ipv4_wildcard
+      | ipv4_bracket
+
+ipv4_everything: "*"
+               | "all"
+               | "any"
+               | "internet"
+               | "internet at large"
+               | "0.0.0.0"
+               | "0.0.0.0/0"
+               | "0.0.0.0-255.255.255.255"
+
+ipv4_host: octet "." octet "." octet "." octet
+ipv4_cidr: ipv4_host "/" v4_prefix
+ipv4_range_full: ipv4_host "-" ipv4_host
+ipv4_range_last_octet: octet "." octet "." octet "." octet "-" octet
+ipv4_wildcard: octet "." octet "." octet "." "*"
+
+ipv4_bracket: octet "." octet "." octet "." bracket_subnet? bracket_open bracket_value bracket_close
+bracket_subnet: DIGIT
+             | DIGIT DIGIT
+             | DIGIT DIGIT DIGIT
+
+bracket_value: bracket_range
+             | bracket_digits
+bracket_range: unsigned_number "-" unsigned_number
+bracket_digits: DIGIT
+              | DIGIT DIGIT
+              | DIGIT DIGIT DIGIT
+              | DIGIT DIGIT DIGIT DIGIT
+
+unsigned_number: DIGIT
+               | DIGIT DIGIT
+               | DIGIT DIGIT DIGIT
+
+bracket_open: "["
+            | "{"
+            | "("
+bracket_close: "]"
+             | "}"
+             | ")"
+
+v4_prefix: DIGIT
+         | DIGIT DIGIT
+
+octet: DIGIT
+     | DIGIT DIGIT
+     | DIGIT DIGIT DIGIT
+
+DIGIT: /[0-9]/

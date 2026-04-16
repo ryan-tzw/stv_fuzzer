@@ -1,0 +1,30 @@
+?start: ipv6_everything
+      | ipv6_like
+      | ipv6_cidr
+      | ipv6_range
+
+ipv6_everything: "::"
+               | "[::]"
+
+ipv6_cidr: ipv6_like "/" v6_prefix
+ipv6_range: ipv6_like "-" ipv6_like
+
+ipv6_like: full_form
+         | part_list "::" part_list?
+         | "::" part_list?
+
+full_form: part ":" part (":" part)*
+part_list: part (":" part)*
+
+part: HEXTET
+    | ipv4_like
+
+ipv4_like: OCTET "." OCTET "." OCTET "." OCTET
+
+v6_prefix: DIGIT
+         | DIGIT DIGIT
+         | DIGIT DIGIT DIGIT
+
+DIGIT: /[0-9]/
+OCTET: /[0-9]{1,3}/
+HEXTET: /[0-9a-fA-F]{1,4}/

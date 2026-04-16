@@ -41,7 +41,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
     "cidrize_ipv4": {
         "project_dir": Path("targets/_reference/cidrize"),
         "harness": "cidrize",
-        "corpus": "ipv4",
+        "corpus": "cidrize_ipv4",
         "mode": "differential",
         "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
         "blackbox_input_flag": "--ipstr",
@@ -50,7 +50,7 @@ PROFILE_CONFIGS: dict[str, dict[str, Any]] = {
     "cidrize_ipv6": {
         "project_dir": Path("targets/_reference/cidrize"),
         "harness": "cidrize",
-        "corpus": "ipv6",
+        "corpus": "cidrize_ipv6",
         "mode": "differential",
         "blackbox_binary": Path("targets/cidrize-runner/bin/linux-cidrize-runner"),
         "blackbox_input_flag": "--ipstr",
