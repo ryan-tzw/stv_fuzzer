@@ -10,6 +10,10 @@ from fuzzer.mutator.base import MutationOperation, MutationStrategy
 class RandomSingleStrategy(MutationStrategy):
     """Pick one random operation from a provided operation set."""
 
+    _DECAY = 0.995
+    _ETA = 0.08
+    _EXPLORATION_STD = 0.02
+
     def __init__(self, operations: list[MutationOperation]):
         if not operations:
             raise ValueError("RandomSingleStrategy requires at least one operation")
@@ -20,17 +24,20 @@ class RandomSingleStrategy(MutationStrategy):
         weights = [op.weight / total for op in self.operations]
         return [random.choices(self.operations, weights=weights, k=1)[0]]
 
+    def apply_decay(self) -> None:
+        for o in self.operations:
+            o.weight *= self._DECAY
+
     def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
         """Lightweight MOpt-style PSO update."""
-        decay = 0.995
-        eta = 0.08
-        exploration_std = 0.02
-        for o in self.operations:
-            o.weight *= decay
         r = math.tanh(reward)
-        op.weight *= math.exp(eta * r)
-        op.weight += random.gauss(0, exploration_std * abs(op.weight))
+        op.weight *= math.exp(self._ETA * r)
+        op.weight += random.gauss(0, self._EXPLORATION_STD * abs(op.weight))
         op.weight = max(0.1, min(10.0, op.weight))
+
+    def get_fallback_operations(self) -> list[MutationOperation]:
+        string_ops = [op for op in self.operations if op.kind == "string"]
+        return string_ops if string_ops else self.operations
 
 
 class RoundRobinStrategy(MutationStrategy):
@@ -47,6 +54,10 @@ class RoundRobinStrategy(MutationStrategy):
         self._next_index = (self._next_index + 1) % len(self.operations)
         return [operation]
 
+    def get_fallback_operations(self) -> list[MutationOperation]:
+        string_ops = [op for op in self.operations if op.kind == "string"]
+        return string_ops if string_ops else self.operations
+
 
 class HybridStrategy(MutationStrategy):
     """
@@ -54,6 +65,10 @@ class HybridStrategy(MutationStrategy):
     - Phase 1: ALWAYS apply one tree mutation first .
     - Phase 2: With 30% probability, ALSO apply one string mutation on top.
     """
+
+    _DECAY = 0.995
+    _ETA = 0.08
+    _EXPLORATION_STD = 0.02
 
     def __init__(self, operations: list[MutationOperation]):
         if not operations:
@@ -80,22 +95,28 @@ class HybridStrategy(MutationStrategy):
 
         return ops_to_apply
 
-    def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
-        """Lightweight MOpt-style PSO update."""
-        decay = 0.995
-        eta = 0.08
-        exploration_std = 0.02
+    def apply_decay(self) -> None:
         all_ops = self.tree_operations + self.string_operations
         for o in all_ops:
-            o.weight *= decay
+            o.weight *= self._DECAY
+
+    def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
+        """Lightweight MOpt-style PSO update"""
         r = math.tanh(reward)
-        op.weight *= math.exp(eta * r)
-        op.weight += random.gauss(0, exploration_std * abs(op.weight))
+        op.weight *= math.exp(self._ETA * r)
+        op.weight += random.gauss(0, self._EXPLORATION_STD * abs(op.weight))
         op.weight = max(0.1, min(10.0, op.weight))
+
+    def get_fallback_operations(self) -> list[MutationOperation]:
+        return self.string_operations
 
 
 class GrammarHeavyStrategy(MutationStrategy):
     """Prefer tree mutations heavily while allowing occasional string ops."""
+
+    _DECAY = 0.995
+    _ETA = 0.08
+    _EXPLORATION_STD = 0.02
 
     def __init__(
         self,
@@ -135,18 +156,20 @@ class GrammarHeavyStrategy(MutationStrategy):
             return [self._pick_weighted(self.tree_operations)]
         return [self._pick_weighted(self.string_operations)]
 
-    def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
-        """Lightweight MOpt-style PSO update."""
-        decay = 0.995
-        eta = 0.08
-        exploration_std = 0.02
+    def apply_decay(self) -> None:
         all_ops = self.tree_operations + self.string_operations
         for o in all_ops:
-            o.weight *= decay
+            o.weight *= self._DECAY
+
+    def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
+        """Lightweight MOpt-style PSO update"""
         r = math.tanh(reward)
-        op.weight *= math.exp(eta * r)
-        op.weight += random.gauss(0, exploration_std * abs(op.weight))
+        op.weight *= math.exp(self._ETA * r)
+        op.weight += random.gauss(0, self._EXPLORATION_STD * abs(op.weight))
         op.weight = max(0.1, min(10.0, op.weight))
+
+    def get_fallback_operations(self) -> list[MutationOperation]:
+        return self.string_operations
 
 
 SELECTOR_FACTORIES: dict[str, Callable[..., MutationStrategy]] = {
