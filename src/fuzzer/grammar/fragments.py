@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from fuzzer.grammar.tree import Node
 from fuzzer.grammar.coverage import GrammarCoverage
 
+MAX_FRAGMENTS_PER_SYMBOL: int = 200
+
 
 def _clone_node(node: Node) -> Node:
     """Deep-copy a Node subtree."""
@@ -24,8 +26,10 @@ class FragmentPool:
     fragments_by_symbol: dict[str, list[Node]] = field(default_factory=dict)
 
     def add(self, node: Node) -> None:
-        clone = _clone_node(node)
-        self.fragments_by_symbol.setdefault(node.symbol, []).append(clone)
+        bucket = self.fragments_by_symbol.setdefault(node.symbol, [])
+        if len(bucket) < MAX_FRAGMENTS_PER_SYMBOL:
+            clone = _clone_node(node)
+            bucket.append(clone)
 
     def add_tree(self, root: Node) -> None:
         self.add(root)

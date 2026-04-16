@@ -24,12 +24,16 @@ class GrammarSubtreeReplace(MutationOperation):
 
     kind = "tree"
 
-    def __init__(self, grammar_name: str = "ipv4"):
+    def __init__(
+        self,
+        grammar_name: str = "ipv4",
+        coverage: GrammarCoverage | None = None,
+    ):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
-        self._coverage = GrammarCoverage()
-        self._mutator = GrammarMutator()
+        self._coverage = coverage or GrammarCoverage()
+        self._mutator = GrammarMutator(coverage=self._coverage)
 
     def mutate(self, data: str) -> str:
         try:
@@ -58,11 +62,12 @@ class MultiGrammarSubtreeReplace(MutationOperation):
         self,
         grammar_name: str = "ipv4",
         config: AdaptiveGrammarMutationConfig | None = None,
+        coverage: GrammarCoverage | None = None,
     ):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
-        self._coverage = GrammarCoverage()
+        self._coverage = coverage or GrammarCoverage()
         self._config = config or AdaptiveGrammarMutationConfig()
         self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
@@ -290,11 +295,12 @@ class LargeSubtreeSplice(MutationOperation):
         self,
         grammar_name: str = "ipv4",
         config: AdaptiveGrammarMutationConfig | None = None,
+        coverage: GrammarCoverage | None = None,
     ):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
-        self._coverage = GrammarCoverage()
+        self._coverage = coverage or GrammarCoverage()
         self._config = config or AdaptiveGrammarMutationConfig()
         self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
@@ -325,11 +331,12 @@ class RecursiveGrammarMutate(MutationOperation):
         self,
         grammar_name: str = "ipv4",
         config: AdaptiveGrammarMutationConfig | None = None,
+        coverage: GrammarCoverage | None = None,
     ):
         self.grammar_name = grammar_name
         self._parser = load_parser(self.grammar_name)
         self._pool = FragmentPool()
-        self._coverage = GrammarCoverage()
+        self._coverage = coverage or GrammarCoverage()
         self._config = config or AdaptiveGrammarMutationConfig()
         self._mutator = GrammarMutator(coverage=self._coverage, config=self._config)
 
