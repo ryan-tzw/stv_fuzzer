@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from fuzzer.grammar.coverage import GrammarCoverage
 from fuzzer.mutator.tree.grammar_mutator import AdaptiveGrammarMutationConfig
 from fuzzer.mutator.base import MutationOperation, MutationStrategy
 from fuzzer.mutator.selectors import SELECTOR_FACTORIES
@@ -51,15 +52,23 @@ def _build_default_operations(context: dict[str, Any]) -> list[MutationOperation
         recursive_prob=0.55,
         recursion_depth_chance=0.70,
     )
+    # Global shared coverage
+    shared_coverage = GrammarCoverage()
     return [
-        GrammarSubtreeReplace(grammar_name=grammar_name),
-        MultiGrammarSubtreeReplace(grammar_name=grammar_name, config=config),
+        GrammarSubtreeReplace(grammar_name=grammar_name, coverage=shared_coverage),
+        MultiGrammarSubtreeReplace(
+            grammar_name=grammar_name, config=config, coverage=shared_coverage
+        ),
         TerminalMutate(grammar_name=grammar_name),
         SubtreeDelete(grammar_name=grammar_name),
         SubtreeDuplicate(grammar_name=grammar_name),
         AlternativeSwitch(grammar_name=grammar_name),
-        LargeSubtreeSplice(grammar_name=grammar_name, config=config),
-        RecursiveGrammarMutate(grammar_name=grammar_name, config=config),
+        LargeSubtreeSplice(
+            grammar_name=grammar_name, config=config, coverage=shared_coverage
+        ),
+        RecursiveGrammarMutate(
+            grammar_name=grammar_name, config=config, coverage=shared_coverage
+        ),
         RandomiseChar(),
         DeleteChar(),
         InsertRandomChar(),

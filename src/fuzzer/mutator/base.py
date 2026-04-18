@@ -36,3 +36,11 @@ class MutationStrategy(ABC):
     def update_weight(self, op: MutationOperation, reward: float = 0.0) -> None:
         """Update an operation's weight based on fuzzing feedback (coverage/crash)."""
         ...
+
+    def apply_decay(self) -> None:
+        """Apply global decay to all known operations once per mutation batch."""
+        pass
+
+    def get_fallback_operations(self) -> list[MutationOperation]:
+        """Return string-based operations to use as fallback"""
+        return []

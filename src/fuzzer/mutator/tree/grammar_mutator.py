@@ -162,14 +162,21 @@ class GrammarMutator:
                 weights = [w / total for w in weights]
                 chosen = self._rng.choices(fragments, weights=weights, k=1)[0]
                 if not _serialize_equivalent(chosen, node):
-                    candidates.append((1.0, node, [chosen]))
+                    weight = self.coverage.get_symbol_weight(node.symbol)
+                    candidates.append((weight, node, [chosen]))
         if not candidates:
             return None
-        target, replacements = (
-            self._rng.choice(candidates)[1],
-            self._rng.choice(candidates)[2],
-        )
-        return _replace_target(root, target, _clone_node(replacements[0]))
+        total_weight = sum(w for w, _, _ in candidates)
+        r = self._rng.uniform(0, total_weight)
+        current = 0.0
+        for weight, target, replacements in candidates:
+            current += weight
+            if current >= r:
+                break
+        else:
+            _, target, replacements = self._rng.choice(candidates)
+        replacement = self._rng.choice(replacements)
+        return _replace_target(root, target, _clone_node(replacement))
 
 
 def _clone_node(node: Node) -> Node:

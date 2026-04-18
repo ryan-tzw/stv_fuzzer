@@ -13,18 +13,20 @@ class GrammarCoverage:
 
     def __init__(self):
         self.symbol_counts: Dict[str, int] = defaultdict(int)
-        self.total_inputs: int = 0
 
     def update_from_tree(self, tree: Node) -> None:
         """Update coverage from a successfully parsed tree."""
-        self._walk_and_count(tree)
+        seen: set[str] = set()
+        self._walk_and_count(tree, seen)
         GrammarCoverage.total_inputs += 1
 
-    def _walk_and_count(self, node: Node) -> None:
-        """Recursively count every symbol in the tree."""
-        self.symbol_counts[node.symbol] += 1
+    def _walk_and_count(self, node: Node, seen: set[str]) -> None:
+        """Recursively count each unique symbol at most once per tree."""
+        if node.symbol not in seen:
+            seen.add(node.symbol)
+            self.symbol_counts[node.symbol] += 1
         for child in node.children:
-            self._walk_and_count(child)
+            self._walk_and_count(child, seen)
 
     def get_symbol_weight(self, symbol: str) -> float:
         """Higher weight = rarer symbol = more interesting to mutate.
