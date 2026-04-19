@@ -1,6 +1,9 @@
 logs/
 runs/
 targets/
+.DS_Store
+.venv-python-afl/
+benchmarks/python_afl/runs/
 
 .github/
 .vscode/

@@ -28,6 +28,18 @@ Fuzzer project for 50.053 Software Testing and Verification
     uv run python -m fuzzer targets/<TARGET_DIR> <HARNESS_FILENAME> <DATA_TYPE>
     ```
 
+# Baseline benchmarks
+
+The repo includes a reproducible `python-afl` baseline under
+[`benchmarks/python_afl/README.md`](benchmarks/python_afl/README.md).
+
+- The harnesses and benchmark scripts in `tools/` and `benchmarks/python_afl/`
+  are part of the project and should be versioned.
+- `python-afl`, AFL++, and the `.venv-python-afl/` environment are external
+  dependencies and should stay local to each machine.
+- Benchmark outputs are written under `benchmarks/python_afl/runs/` and are
+  intentionally ignored.
+
 # Making commits
 
 - Note: Because the pre-commit is configured with Ruff's linter and formatter, if Ruff makes any formatting changes to your code, it will show an error.
