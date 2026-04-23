@@ -55,3 +55,15 @@ class CoverageState:
     @property
     def total_seen_arcs(self) -> int:
         return len(self._seen_arcs)
+
+    @property
+    def seen_lines(self) -> frozenset[tuple[str, int]]:
+        return frozenset(self._seen_lines)
+
+    @property
+    def seen_branches(self) -> frozenset[ArcKey]:
+        return frozenset(self._seen_branches)
+
+    @property
+    def seen_arcs(self) -> frozenset[ArcKey]:
+        return frozenset(self._seen_arcs)

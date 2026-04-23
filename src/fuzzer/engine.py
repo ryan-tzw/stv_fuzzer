@@ -11,6 +11,7 @@ from typing import Any
 from fuzzer.assembly import EngineComponents, build_engine_components
 from fuzzer.config import FuzzerConfig
 from fuzzer.contracts import (
+    CoverageSetProvider,
     CoverageStatsProvider,
     CrashSignalProtocol,
     SupportsCycleStart,
@@ -158,8 +159,22 @@ class FuzzingEngine:
 
     def _generate_run_end_report(self) -> None:
         """Generate markdown run report, warning on failures."""
+        seen_lines: frozenset[tuple[str, int]] | None = None
+        seen_branches: frozenset[tuple[str, tuple[int, int]]] | None = None
+        seen_arcs: frozenset[tuple[str, tuple[int, int]]] | None = None
+        if isinstance(self.feedback, CoverageSetProvider):
+            seen_lines = self.feedback.seen_lines
+            seen_branches = self.feedback.seen_branches
+            seen_arcs = self.feedback.seen_arcs
         try:
-            generate_run_report(run_dir=self.run_dir, db=self.db)
+            generate_run_report(
+                run_dir=self.run_dir,
+                db=self.db,
+                project_dir=self.config.project_dir,
+                seen_lines=seen_lines,
+                seen_branches=seen_branches,
+                seen_arcs=seen_arcs,
+            )
         except BaseException as exc:
             self.logger.log_stop_reason(
                 f"warning: failed to generate markdown report: {exc!r}"

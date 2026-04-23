@@ -79,3 +79,18 @@ class DifferentialFeedback:
     def total_seen_arcs(self) -> int:
         """Expose cumulative unique arcs seen by whitebox coverage feedback."""
         return self._coverage_feedback.total_seen_arcs
+
+    @property
+    def seen_lines(self) -> frozenset[tuple[str, int]]:
+        """Expose unique covered lines seen by whitebox coverage feedback."""
+        return self._coverage_feedback.seen_lines
+
+    @property
+    def seen_branches(self) -> frozenset[tuple[str, tuple[int, int]]]:
+        """Expose unique covered branch exits seen by whitebox coverage feedback."""
+        return self._coverage_feedback.seen_branches
+
+    @property
+    def seen_arcs(self) -> frozenset[tuple[str, tuple[int, int]]]:
+        """Expose unique covered arcs seen by whitebox coverage feedback."""
+        return self._coverage_feedback.seen_arcs

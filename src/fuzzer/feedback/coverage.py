@@ -118,3 +118,18 @@ class CoverageFeedback:
     def total_seen_arcs(self) -> int:
         """Return total unique covered arcs observed globally."""
         return self._state.total_seen_arcs
+
+    @property
+    def seen_lines(self) -> frozenset[tuple[str, int]]:
+        """Return unique covered lines observed globally."""
+        return self._state.seen_lines
+
+    @property
+    def seen_branches(self) -> frozenset[ArcKey]:
+        """Return unique covered branch exits observed globally."""
+        return self._state.seen_branches
+
+    @property
+    def seen_arcs(self) -> frozenset[ArcKey]:
+        """Return unique covered arcs observed globally."""
+        return self._state.seen_arcs

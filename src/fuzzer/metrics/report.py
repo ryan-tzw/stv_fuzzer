@@ -1,5 +1,7 @@
 """Markdown run report generation for fuzzing telemetry and crashes."""
 
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -8,7 +10,26 @@ if TYPE_CHECKING:
     from fuzzer.storage.database import FuzzerDatabase
 
 
-def generate_run_report(*, run_dir: Path, db: "FuzzerDatabase") -> Path:
+CoverageLineKey = tuple[str, int]
+CoverageArcKey = tuple[str, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class CoverageRatio:
+    covered: int
+    total: int
+    percent: float
+
+
+def generate_run_report(
+    *,
+    run_dir: Path,
+    db: "FuzzerDatabase",
+    project_dir: Path | None = None,
+    seen_lines: frozenset[CoverageLineKey] | None = None,
+    seen_branches: frozenset[CoverageArcKey] | None = None,
+    seen_arcs: frozenset[CoverageArcKey] | None = None,
+) -> Path:
     """Generate a markdown run report and return the output path."""
     report_dir = run_dir / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -18,6 +39,12 @@ def generate_run_report(*, run_dir: Path, db: "FuzzerDatabase") -> Path:
     generated_at = datetime.now().isoformat(timespec="seconds")
     latest_metrics = db.get_latest_metrics_summary()
     crash_rows = db.get_crash_site_summary(limit=10)
+    coverage_ratios = _coverage_ratios(
+        project_dir=project_dir,
+        seen_lines=seen_lines,
+        seen_branches=seen_branches,
+        seen_arcs=seen_arcs,
+    )
 
     lines = [
         f"# Fuzzer Run Report ({run_id})",
@@ -31,9 +58,27 @@ def generate_run_report(*, run_dir: Path, db: "FuzzerDatabase") -> Path:
             "Corpus Size", latest_metrics.get("corpus_size", db.get_corpus_size())
         ),
         _summary_line("Unique Crashes", latest_metrics.get("unique_crashes", 0)),
-        _summary_line("Line Coverage", latest_metrics.get("line_coverage", 0)),
-        _summary_line("Branch Coverage", latest_metrics.get("branch_coverage", 0)),
-        _summary_line("Arc Coverage", latest_metrics.get("arc_coverage", 0)),
+        _summary_line(
+            "Line Coverage",
+            _format_coverage_value(
+                latest_metrics.get("line_coverage", 0),
+                coverage_ratios.get("line"),
+            ),
+        ),
+        _summary_line(
+            "Branch Coverage",
+            _format_coverage_value(
+                latest_metrics.get("branch_coverage", 0),
+                coverage_ratios.get("branch"),
+            ),
+        ),
+        _summary_line(
+            "Arc Coverage",
+            _format_coverage_value(
+                latest_metrics.get("arc_coverage", 0),
+                coverage_ratios.get("arc"),
+            ),
+        ),
         _summary_line(
             "Exec/s",
             _format_execs_per_sec(latest_metrics.get("executions_per_sec", 0.0)),
@@ -73,6 +118,137 @@ def _format_execs_per_sec(value: object) -> str:
         return f"{float(str(value)):.2f}"
     except ValueError:
         return "0.00"
+
+
+def _format_coverage_value(
+    raw_count: object,
+    ratio: CoverageRatio | None,
+) -> object:
+    if ratio is None:
+        return raw_count
+    return f"{ratio.covered}/{ratio.total} ({ratio.percent:.2f}%)"
+
+
+def _coverage_ratios(
+    *,
+    project_dir: Path | None,
+    seen_lines: frozenset[CoverageLineKey] | None,
+    seen_branches: frozenset[CoverageArcKey] | None,
+    seen_arcs: frozenset[CoverageArcKey] | None,
+) -> dict[str, CoverageRatio]:
+    if (
+        project_dir is None
+        or seen_lines is None
+        or seen_branches is None
+        or seen_arcs is None
+    ):
+        return {}
+
+    from coverage.parser import PythonParser
+
+    project_root = project_dir.resolve()
+    files = _seen_files(
+        seen_lines=seen_lines,
+        seen_branches=seen_branches,
+        seen_arcs=seen_arcs,
+    )
+    if not files:
+        return {}
+
+    lines_by_file = _index_lines(seen_lines)
+    branches_by_file = _index_arcs(seen_branches)
+    arcs_by_file = _index_arcs(seen_arcs)
+
+    line_covered = 0
+    line_total = 0
+    branch_covered = 0
+    branch_total = 0
+    arc_covered = 0
+    arc_total = 0
+
+    for rel_path in sorted(files):
+        file_path = (project_root / rel_path).resolve()
+        try:
+            file_path.relative_to(project_root)
+        except ValueError:
+            continue
+        if not file_path.is_file():
+            continue
+
+        try:
+            parser = PythonParser(filename=str(file_path))
+            parser.parse_source()
+        except Exception:
+            continue
+
+        static_lines = set(parser.statements)
+        static_arcs = set(parser.arcs())
+        exit_counts = parser.exit_counts()
+        branch_source_lines = {line for line, exits in exit_counts.items() if exits > 1}
+        static_branch_arcs = {
+            arc for arc in static_arcs if arc[0] in branch_source_lines
+        }
+
+        line_total += len(static_lines)
+        arc_total += len(static_arcs)
+        branch_total += sum(exits for exits in exit_counts.values() if exits > 1)
+
+        line_covered += len(lines_by_file.get(rel_path, set()) & static_lines)
+        arc_covered += len(arcs_by_file.get(rel_path, set()) & static_arcs)
+        branch_covered += len(
+            branches_by_file.get(rel_path, set()) & static_branch_arcs
+        )
+
+    ratios: dict[str, CoverageRatio] = {}
+    if line_total > 0:
+        ratios["line"] = CoverageRatio(
+            covered=line_covered,
+            total=line_total,
+            percent=(line_covered / line_total) * 100.0,
+        )
+    if branch_total > 0:
+        ratios["branch"] = CoverageRatio(
+            covered=branch_covered,
+            total=branch_total,
+            percent=(branch_covered / branch_total) * 100.0,
+        )
+    if arc_total > 0:
+        ratios["arc"] = CoverageRatio(
+            covered=arc_covered,
+            total=arc_total,
+            percent=(arc_covered / arc_total) * 100.0,
+        )
+    return ratios
+
+
+def _seen_files(
+    *,
+    seen_lines: frozenset[CoverageLineKey],
+    seen_branches: frozenset[CoverageArcKey],
+    seen_arcs: frozenset[CoverageArcKey],
+) -> set[str]:
+    files = {file for file, _ in seen_lines}
+    files.update(file for file, _ in seen_branches)
+    files.update(file for file, _ in seen_arcs)
+    return files
+
+
+def _index_lines(
+    seen_lines: frozenset[CoverageLineKey],
+) -> dict[str, set[int]]:
+    indexed: dict[str, set[int]] = defaultdict(set)
+    for file, line in seen_lines:
+        indexed[file].add(line)
+    return indexed
+
+
+def _index_arcs(
+    seen_arcs: frozenset[CoverageArcKey],
+) -> dict[str, set[tuple[int, int]]]:
+    indexed: dict[str, set[tuple[int, int]]] = defaultdict(set)
+    for file, arc in seen_arcs:
+        indexed[file].add(arc)
+    return indexed
 
 
 def _graph_section_lines(report_dir: Path) -> list[str]:

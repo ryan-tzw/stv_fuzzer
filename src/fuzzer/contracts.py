@@ -48,6 +48,24 @@ class CoverageStatsProvider(Protocol):
     def total_seen_arcs(self) -> int: ...
 
 
+CoverageLineKey = tuple[str, int]
+CoverageArcKey = tuple[str, tuple[int, int]]
+
+
+@runtime_checkable
+class CoverageSetProvider(Protocol):
+    """Optional feedback capability: raw seen coverage sets."""
+
+    @property
+    def seen_lines(self) -> frozenset[CoverageLineKey]: ...
+
+    @property
+    def seen_branches(self) -> frozenset[CoverageArcKey]: ...
+
+    @property
+    def seen_arcs(self) -> frozenset[CoverageArcKey]: ...
+
+
 @runtime_checkable
 class CrashSignalProtocol(Protocol):
     """Optional signal capability: parsed crash metadata."""
