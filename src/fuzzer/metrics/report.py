@@ -81,7 +81,12 @@ def generate_run_report(
         ),
         _summary_line(
             "Exec/s",
-            _format_execs_per_sec(latest_metrics.get("executions_per_sec", 0.0)),
+            _format_execs_per_sec(
+                latest_metrics.get(
+                    "average_executions_per_sec",
+                    latest_metrics.get("executions_per_sec", 0.0),
+                )
+            ),
         ),
         "",
         "## Graphs",

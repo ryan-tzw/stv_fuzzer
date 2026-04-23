@@ -237,20 +237,67 @@ class FuzzerDatabase:
                 "corpus_size": self.get_corpus_size(),
                 "unique_crashes": 0,
                 "executions_per_sec": 0.0,
+                "average_executions_per_sec": 0.0,
                 "line_coverage": 0,
                 "branch_coverage": 0,
                 "arc_coverage": 0,
             }
 
+        average_execs_per_sec = self.get_average_execs_per_sec()
         return {
             "executions": int(row["executions"]),
             "corpus_size": int(row["corpus_size"]),
             "unique_crashes": int(row["unique_crashes"]),
             "executions_per_sec": float(row["executions_per_sec"]),
+            "average_executions_per_sec": (
+                float(average_execs_per_sec)
+                if isinstance(average_execs_per_sec, (int, float))
+                else 0.0
+            ),
             "line_coverage": int(row["line_coverage"]),
             "branch_coverage": int(row["branch_coverage"]),
             "arc_coverage": int(row["total_edges"]),
         }
+
+    def get_average_execs_per_sec(self) -> float:
+        """Return run-average execution speed from first/last telemetry rows."""
+        first_row = self._conn.execute(
+            """
+            SELECT timestamp, executions
+            FROM fuzzer_metrics
+            ORDER BY timestamp ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        last_row = self._conn.execute(
+            """
+            SELECT timestamp, executions
+            FROM fuzzer_metrics
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if first_row is None or last_row is None:
+            return 0.0
+
+        try:
+            start = datetime.fromisoformat(str(first_row["timestamp"]))
+            end = datetime.fromisoformat(str(last_row["timestamp"]))
+        except ValueError:
+            return 0.0
+
+        elapsed = (end - start).total_seconds()
+        if elapsed <= 0:
+            return 0.0
+
+        try:
+            first_exec = int(first_row["executions"])
+            last_exec = int(last_row["executions"])
+        except TypeError, ValueError:
+            return 0.0
+
+        delta_exec = max(0, last_exec - first_exec)
+        return float(delta_exec) / elapsed
 
     def get_crash_site_summary(self, *, limit: int = 10) -> list[dict[str, object]]:
         rows = self._conn.execute(
